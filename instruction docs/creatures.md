@@ -5,7 +5,7 @@ how many hitpoints a creature has.
 how much damage a creature deals. the final damage each creature deals is calculated as so:
     damage = atk * (1 + type + element)
 how frequent a creature attacks (attacks per second) is calculated as so:
-    atk rate = (spd / 10) + (atk / 100)
+    atk cooldown = (spd / 10) + (atk / 100)
 ## pop
 how many creatures can be spawned on the battle field at the same time. if their limit is reached, their spawning nest building pauses spawining timer until more pop spots are available.
 ## spd

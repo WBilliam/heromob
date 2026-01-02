@@ -1,38 +1,55 @@
+import {
+  CREATURE_SPAWN_JITTER,
+  CREATURE_SPEED_JITTER,
+} from "../constants.js";
+import { applySpawnVariation } from "./variation.js";
+
 export const GOBLIN_CONFIG = {
   id: "goblin",
   name: "Goblin",
-  description: "Fast melee unit.",
-  playerMaxHp: 2,
-  enemyMaxHp: 5,
+  description: "Fast melee minion.",
+  icon: "assets/images/icons/goblin-icon.png",
+  level: "minion",
+  attackType: "melee",
+  element: "thunder",
+  playerMaxHp: 3,
+  enemyMaxHp: 3,
   damage: 1,
   speed: 80,
   radius: 9,
   spriteWidth: 26,
   spriteHeight: 30,
-  spawnJitter: 24,
-  speedJitter: 10,
+  pop: 8,
+  spawnJitter: CREATURE_SPAWN_JITTER,
+  speedJitter: CREATURE_SPEED_JITTER,
 };
 
 export const GOBLIN_DEFINITION = {
   id: GOBLIN_CONFIG.id,
   name: GOBLIN_CONFIG.name,
   description: GOBLIN_CONFIG.description,
+  icon: GOBLIN_CONFIG.icon,
+  level: GOBLIN_CONFIG.level,
 };
 
 export function createGoblinState({ id, team, x, y }) {
   const maxHp =
     team === "player" ? GOBLIN_CONFIG.playerMaxHp : GOBLIN_CONFIG.enemyMaxHp;
-  const jitter = (Math.random() - 0.5) * GOBLIN_CONFIG.spawnJitter;
-  const speedJitter =
-    Math.random() * GOBLIN_CONFIG.speedJitter -
-    GOBLIN_CONFIG.speedJitter / 2;
+  const variation = applySpawnVariation({
+    x,
+    speed: GOBLIN_CONFIG.speed,
+    spawnJitter: GOBLIN_CONFIG.spawnJitter,
+    speedJitter: GOBLIN_CONFIG.speedJitter,
+  });
   return {
     id,
     type: GOBLIN_CONFIG.id,
     team,
-    x: x + jitter,
+    attackType: GOBLIN_CONFIG.attackType,
+    element: GOBLIN_CONFIG.element,
+    x: variation.x,
     y,
-    speed: GOBLIN_CONFIG.speed + speedJitter,
+    speed: variation.speed,
     radius: GOBLIN_CONFIG.radius,
     spriteWidth: GOBLIN_CONFIG.spriteWidth,
     spriteHeight: GOBLIN_CONFIG.spriteHeight,
@@ -45,3 +62,4 @@ export function createGoblinState({ id, team, x, y }) {
     deathTimer: 0,
   };
 }
+

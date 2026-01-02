@@ -22,3 +22,5 @@ Stage 2 - Building Placement Prototype
 - Creatures now aggro enemies/buildings within a radius, otherwise target the enemy base.
 - Building and creature configs live in per-type modules; global config removed.
 - Destroyed buildings disappear from the battlefield and no longer block placement.
+- Added creature panel with population counters and drag-to-assign nest spawning.
+- Nests now spawn only after a unit creature is assigned from the creature panel.

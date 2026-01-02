@@ -276,7 +276,7 @@ body {
   height: 1400px;
   position: relative;
   background-color: #f1d7b2;
-  background-image: url("assets/images/battle-area.png");
+  background-image: url("assets/images/backgrounds/battle-area.png");
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -324,11 +324,11 @@ body {
 
 .base.enemy {
   border-radius: 50%;
-  background-image: url("assets/images/base-enemy.png");
+  background-image: url("assets/images/bases/base-enemy.png");
 }
 
 .base.player {
-  background-image: url("assets/images/base-player.png");
+  background-image: url("assets/images/bases/base-player.png");
 }
 
 .base-label {
@@ -354,15 +354,30 @@ body {
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
-  background-image: url("assets/images/nest.png");
+  background-image: url("assets/images/buildings/nest.png");
+}
+
+.nest.assign-target {
+  box-shadow: 0 0 0 2px rgba(255, 214, 150, 0.7), 0 10px 18px rgba(6, 4, 3, 0.45);
+}
+
+.nest.assign-target.assign-invalid {
+  box-shadow: 0 0 0 2px rgba(210, 88, 78, 0.8), 0 10px 18px rgba(6, 4, 3, 0.45);
+}
+
+.nest-assigned {
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 214, 150, 0.9);
 }
 
 .nest.enemy {
-  background-image: url("assets/images/nest.png");
+  background-image: url("assets/images/buildings/nest.png");
 }
 
 .nest.player {
-  background-image: url("assets/images/nest.png");
+  background-image: url("assets/images/buildings/nest.png");
 }
 
 .nest.destroyed {
@@ -386,7 +401,7 @@ body {
   padding-top: 4px;
   z-index: 2;
   border-radius: 10px;
-  background-image: url("assets/images/wall.png");
+  background-image: url("assets/images/buildings/wall.png");
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -409,7 +424,7 @@ body {
   padding: 6px;
   z-index: 2;
   border-radius: 14px;
-  background-image: url("assets/images/tower.png");
+  background-image: url("assets/images/buildings/tower.png");
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -445,6 +460,10 @@ body {
   background: linear-gradient(90deg, #b7e076, #4f8f3d);
 }
 
+.tower.enemy .tower-hp span {
+  background: linear-gradient(90deg, #f27b6e, #b6342a);
+}
+
 .wall-hp {
   width: 70%;
   height: 4px;
@@ -459,6 +478,10 @@ body {
   background: linear-gradient(90deg, #b7e076, #4f8f3d);
 }
 
+.wall.enemy .wall-hp span {
+  background: linear-gradient(90deg, #f27b6e, #b6342a);
+}
+
 .nest.ghost.invalid {
   opacity: 0.35;
   filter: grayscale(60%);
@@ -470,7 +493,7 @@ body {
   opacity: 0.7;
   pointer-events: none;
   border-radius: 10px;
-  background-image: url("assets/images/wall.png");
+  background-image: url("assets/images/buildings/wall.png");
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -489,7 +512,7 @@ body {
   opacity: 0.7;
   pointer-events: none;
   border-radius: 14px;
-  background-image: url("assets/images/tower.png");
+  background-image: url("assets/images/buildings/tower.png");
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -544,7 +567,7 @@ body {
   width: 18px;
   height: 18px;
   box-shadow: 0 4px 10px rgba(18, 12, 10, 0.35);
-  background-image: url("assets/images/creature-goblin.png");
+  background-image: none;
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -555,12 +578,12 @@ body {
   filter: grayscale(40%);
 }
 
-.creature.player .creature-body {
-  background-image: url("assets/images/creature-goblin.png");
+.creature.goblin .creature-body {
+  background-image: url("assets/images/creatures/creature-goblin.png");
 }
 
-.creature.enemy .creature-body {
-  background-image: url("assets/images/creature-goblin.png");
+.creature.pupdragon .creature-body {
+  background-image: url("assets/images/creatures/creature-pupdragon.png");
 }
 
 .projectile {
@@ -570,7 +593,7 @@ body {
   transform: translate(-50%, -50%)
     rotate(calc(var(--projectile-rotation) + var(--projectile-rotation-offset)));
   transform-origin: center;
-  background-image: url("assets/images/tower_arrow_projectile.png");
+  background-image: none;
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -578,6 +601,14 @@ body {
   z-index: 3;
   pointer-events: none;
   will-change: transform;
+}
+
+.projectile.tower {
+  background-image: url("assets/images/projectiles/tower_arrow_projectile.png");
+}
+
+.projectile.pupdragon {
+  background-image: url("assets/images/projectiles/pupdragon-fire-projectile.png");
 }
 
 .projectile::after {
@@ -632,12 +663,23 @@ body {
 .battlefield-area {
   width: min(1120px, 96vw);
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px 1fr 220px;
   gap: 16px;
   align-items: start;
 }
 
 .build-panel {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 12px 28px rgba(8, 6, 5, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.creature-panel {
   background: var(--surface);
   border-radius: 20px;
   padding: 16px;
@@ -661,6 +703,12 @@ body {
 }
 
 .building-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.creature-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -713,15 +761,15 @@ body {
 }
 
 .building-icon.nest {
-  background-image: url("assets/images/nest.png");
+  background-image: url("assets/images/buildings/nest.png");
 }
 
 .building-icon.wall {
-  background-image: url("assets/images/wall.png");
+  background-image: url("assets/images/buildings/wall.png");
 }
 
 .building-icon.tower {
-  background-image: url("assets/images/tower.png");
+  background-image: url("assets/images/buildings/tower.png");
 }
 
 .building-info {
@@ -757,6 +805,84 @@ body {
 
 .building-desc {
   font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.creature-card {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(28, 20, 17, 0.9);
+  border: 1px solid rgba(150, 112, 86, 0.25);
+  box-shadow: 0 8px 18px rgba(6, 4, 3, 0.55);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.creature-card:active {
+  cursor: grabbing;
+}
+
+.creature-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background-color: rgba(18, 14, 12, 0.8);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.creature-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.creature-pop {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.creature-ghost {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(24, 18, 15, 0.92);
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+  box-shadow: 0 12px 22px rgba(6, 4, 3, 0.55);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.creature-ghost.invalid {
+  opacity: 0.5;
+  border-color: rgba(210, 88, 78, 0.7);
+}
+
+.creature-ghost-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background-color: rgba(18, 14, 12, 0.8);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.creature-ghost-label {
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
@@ -840,6 +966,10 @@ body {
   .build-panel {
     order: -1;
   }
+
+  .creature-panel {
+    order: -1;
+  }
 }
 
 @media (max-width: 600px) {
@@ -864,3 +994,4 @@ body {
     font-size: 1rem;
   }
 }
+

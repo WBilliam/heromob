@@ -11,7 +11,7 @@ export default defineComponent({
       <div class="result">
         <div class="result-title">{{ resultMessage }}</div>
         <div class="result-subtitle">Battle complete. Restart to try again.</div>
-        <button class="btn" type="button" @click="resetBattle">Restart Battle</button>
+        <button class="btn" type="button" @click="restartBattle">Restart Battle</button>
       </div>
     </div>
   `,

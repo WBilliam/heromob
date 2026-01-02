@@ -1,23 +1,23 @@
-# Goblin
+# Pup Dragon
 
-Fast melee minion used in the current battle prototype.
+fire breathing ranged creature.
 
 ## Classification
-- Level: minion
-- Type: melee
-- Element: thunder
+- Level: unit
+- Type: ranged
+- Element: fire
 
 ## Core stats
 - HP: 3
 - Atk: 1 per hit
 - Spd: 80 (base movement speed)
-- Pop: 8
+- Pop: 4
 
 ## Spawn and variation
 - Spawn jitter: 24 (random horizontal offset on spawn)
 - Speed jitter: 10 (random +/- speed variation)
 
 ## Combat and movement
-- Melee attacker; must be in contact range to hit.
+- Ranged attacker; must be in range to hit.
 - Targeting priority: nearest enemy creature/building within aggro radius; otherwise target the enemy base.
-- Gang-up: if a player goblin is already battling an enemy creature, other player goblins ignore their current target and converge on that same enemy.
+- Pups stick together: all spawned pups are drawn to all other and move/attack together.

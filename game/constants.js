@@ -11,4 +11,6 @@ export const CREATURE_SPACING = 6;
 export const OPPONENT_SPACING = 0;
 export const SEPARATION_STRENGTH = 0.5;
 export const CREATURES_CAN_FIGHT = true;
+export const CREATURE_SPAWN_JITTER = 24;
+export const CREATURE_SPEED_JITTER = 10;
 export const BUILDING_ZONE_START_RATIO = 2 / 3;

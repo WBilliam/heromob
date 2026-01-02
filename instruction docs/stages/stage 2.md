@@ -29,6 +29,11 @@ Buildings UI area
 - When a building is dropped inside the building zone, it becomes active on the battlefield.
 - If the building is dropped outside the building zone, it snaps back to the UI panel.
 
+Creatures UI area
+- Add a right-side UI panel that lists available creatures with a population counter (used/max).
+- Creature entries are draggable and can be assigned to player nests.
+- Only unit-level creatures can be assigned to nests.
+
 Menu and navigation
 - The menu screen is the default route and shows only two buttons: Play and Dev Mode.
 - Play routes to the game screen and starts the battle loop.
@@ -37,8 +42,8 @@ Menu and navigation
 
 Placement behavior
 - The player can place multiple buildings if the design allows (keep it simple).
-- Once placed, a building's functionality begins immediately.
-- Example: a placed nest starts its spawn timer and begins spawning creatures.
+- Buildings become active immediately after placement, except nests.
+- Nests only begin spawning after a unit creature is assigned via drag-and-drop.
 - Walls act as high-HP barriers that slow enemy advance.
 - Towers fire projectiles at enemy creatures within range.
 - Buildings should remain interactable targets for combat using existing Stage 1 rules.

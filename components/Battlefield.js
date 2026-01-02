@@ -28,10 +28,25 @@ const NestBlock = defineComponent({
     style: { type: Object, required: true },
     hpPercent: { type: Number, required: true },
     spawnPercent: { type: Number, required: true },
+    isTarget: { type: Boolean, default: false },
+    isValidTarget: { type: Boolean, default: false },
+    assignedLabel: { type: String, default: "" },
   },
   template: `
-    <div class="nest" :class="[team, { destroyed: nest.hp <= 0 }]" :style="style">
+    <div
+      class="nest"
+      :class="[
+        team,
+        {
+          destroyed: nest.hp <= 0,
+          'assign-target': isTarget,
+          'assign-invalid': isTarget && !isValidTarget,
+        }
+      ]"
+      :style="style"
+    >
       <div class="nest-label">{{ label }}</div>
+      <div v-if="assignedLabel" class="nest-assigned">{{ assignedLabel }}</div>
       <div class="nest-hp">
         <span :style="{ width: hpPercent + '%' }"></span>
       </div>
@@ -50,7 +65,7 @@ const WallBlock = defineComponent({
     hpPercent: { type: Number, required: true },
   },
   template: `
-    <div class="wall" :class="{ destroyed: wall.hp <= 0 }" :style="style">
+    <div class="wall" :class="[wall.team, { destroyed: wall.hp <= 0 }]" :style="style">
       <div class="wall-hp">
         <span :style="{ width: hpPercent + '%' }"></span>
       </div>
@@ -66,7 +81,7 @@ const TowerBlock = defineComponent({
     hpPercent: { type: Number, required: true },
   },
   template: `
-    <div class="tower" :class="{ destroyed: tower.hp <= 0 }" :style="style">
+    <div class="tower" :class="[tower.team, { destroyed: tower.hp <= 0 }]" :style="style">
       <div class="tower-core"></div>
       <div class="tower-hp">
         <span :style="{ width: hpPercent + '%' }"></span>
@@ -82,7 +97,7 @@ const ProjectileBolt = defineComponent({
     style: { type: Object, required: true },
   },
   template: `
-    <div class="projectile" :class="projectile.team" :style="style"></div>
+    <div class="projectile" :class="[projectile.team, projectile.kind]" :style="style"></div>
   `,
 });
 
@@ -134,6 +149,26 @@ const DragGhost = defineComponent({
   `,
 });
 
+const CreatureGhost = defineComponent({
+  name: "CreatureGhost",
+  props: {
+    style: { type: Object, required: true },
+    isValid: { type: Boolean, required: true },
+    creature: { type: Object, required: true },
+  },
+  template: `
+    <div class="creature-ghost" :class="{ invalid: !isValid }" :style="style">
+      <div
+        class="creature-ghost-icon"
+        :style="{
+          backgroundImage: creature.icon ? 'url(' + creature.icon + ')' : ''
+        }"
+      ></div>
+      <div class="creature-ghost-label">Assign {{ creature.name }}</div>
+    </div>
+  `,
+});
+
 export default defineComponent({
   name: "Battlefield",
   components: {
@@ -145,6 +180,7 @@ export default defineComponent({
     CreatureUnit,
     BuildingZoneLine,
     DragGhost,
+    CreatureGhost,
   },
   setup() {
     const battle = inject("battle");
@@ -165,14 +201,11 @@ export default defineComponent({
           :style="baseStyle('player')"
         />
 
-        <NestBlock
-          v-if="enemyNest.hp > 0"
-          team="enemy"
-          label="Enemy Nest"
-          :nest="enemyNest"
-          :style="enemyNestStyle()"
-          :hp-percent="nestHpPercent(enemyNest)"
-          :spawn-percent="spawnPercent(enemyNest)"
+        <TowerBlock
+          v-if="enemyTower.hp > 0"
+          :tower="enemyTower"
+          :style="enemyTowerStyle()"
+          :hp-percent="nestHpPercent(enemyTower)"
         />
 
         <template v-for="nest in playerNests" :key="nest.id">
@@ -184,6 +217,9 @@ export default defineComponent({
             :style="playerNestStyle(nest)"
             :hp-percent="nestHpPercent(nest)"
             :spawn-percent="spawnPercent(nest)"
+            :is-target="creatureDragState.active && creatureDragState.targetNestId === nest.id"
+            :is-valid-target="creatureDragState.isValid"
+            :assigned-label="nest.spawnCreatureId ? creatureLabel(nest.spawnCreatureId) : ''"
           />
         </template>
 
@@ -211,6 +247,13 @@ export default defineComponent({
           :is-valid="dragState.isValid"
           :type="dragBuilding.id"
           :label="dragBuilding.name"
+        />
+
+        <CreatureGhost
+          v-if="creatureDragState.active && dragCreature"
+          :style="creatureDragGhostStyle"
+          :is-valid="creatureDragState.isValid"
+          :creature="dragCreature"
         />
 
         <ProjectileBolt

@@ -21,6 +21,11 @@ import {
   BUILDING_ZONE_START_RATIO,
 } from "./constants.js";
 import {
+  ELEMENT_EFFECTIVENESS,
+  TYPE_EFFECTIVENESS,
+  getEffectiveness,
+} from "./creatures/effectiveness.js";
+import {
   BASE_CONFIG,
   BUILDING_CATALOG,
   NEST_CONFIG,
@@ -31,13 +36,17 @@ import {
   applyTowerDamage,
   applyWallDamage,
   createBaseState,
-  createEnemyNestState,
   createNestState,
   createTowerState,
   createWallState,
   getBuildingDefinition,
 } from "./buildings/index.js";
-import { createGoblinState } from "./creatures/index.js";
+import {
+  CREATURE_CATALOG,
+  createGoblinState,
+  createPupDragonState,
+  getCreatureConfig,
+} from "./creatures/index.js";
 
 const BASE_MAX_HP = BASE_CONFIG.maxHp;
 const PLAYER_BASE_WIDTH = BASE_CONFIG.playerSize.width;
@@ -65,12 +74,16 @@ export function useBattleState() {
 
   const enemyBase = reactive(createBaseState());
   const playerBase = reactive(createBaseState());
-  const enemyNest = reactive(createEnemyNestState());
+  const enemyTower = reactive(
+    createTowerState({ id: 0, team: "enemy", x: 0, y: 0 })
+  );
   const playerNests = ref([]);
   const playerWalls = ref([]);
   const playerTowers = ref([]);
   const creatures = ref([]);
   const projectiles = ref([]);
+  const creatureCatalog = CREATURE_CATALOG;
+  const baseSpawnProgress = reactive({ enemy: 0, player: 0 });
   const buildingCatalog = BUILDING_CATALOG;
   const dragState = reactive({
     active: false,
@@ -78,6 +91,14 @@ export function useBattleState() {
     x: 0,
     y: 0,
     isValid: false,
+  });
+  const creatureDragState = reactive({
+    active: false,
+    creatureId: null,
+    x: 0,
+    y: 0,
+    isValid: false,
+    targetNestId: null,
   });
 
   const isBattleActive = ref(false);
@@ -114,6 +135,12 @@ export function useBattleState() {
     };
   });
 
+  function updateEnemyTowerPosition() {
+    const pos = nestPositions.value.enemy;
+    enemyTower.x = pos.x;
+    enemyTower.y = pos.y;
+  }
+
   const buildingZoneTop = computed(() =>
     Math.max(0, field.height * BUILDING_ZONE_START_RATIO)
   );
@@ -133,13 +160,32 @@ export function useBattleState() {
     field.height = rect.height;
     viewport.width = shellRect.width;
     viewport.height = shellRect.height;
+    updateEnemyTowerPosition();
   }
 
-  function spawnCreature(team, source) {
+  function hasPopSpace(team, creatureId) {
+    const config = getCreatureConfig(creatureId);
+    if (!config || typeof config.pop !== "number") return true;
+    const aliveCount = creatures.value.filter(
+      (creature) =>
+        !creature.isDead && creature.team === team && creature.type === creatureId
+    ).length;
+    return aliveCount < config.pop;
+  }
+
+  function createCreatureState(creatureId, data) {
+    if (creatureId === "pupdragon") {
+      return createPupDragonState(data);
+    }
+    return createGoblinState(data);
+  }
+
+  function spawnCreature(team, source, creatureId = "goblin") {
     if (isGameOver.value || !field.width || !field.height) return;
     if (!source) return;
+    if (!hasPopSpace(team, creatureId)) return;
     creatures.value.push(
-      createGoblinState({
+      createCreatureState(creatureId, {
         id: nextId++,
         team,
         x: source.x,
@@ -151,15 +197,14 @@ export function useBattleState() {
   function getEnemyBuildings(targetTeam) {
     const buildings = [];
     if (targetTeam === "enemy") {
-      if (enemyNest.hp > 0) {
-        const pos = nestPositions.value.enemy;
+      if (enemyTower.hp > 0) {
         buildings.push({
-          type: "nest",
-          ref: enemyNest,
-          x: pos.x,
-          y: pos.y,
-          width: NEST_WIDTH,
-          height: NEST_HEIGHT,
+          type: "tower",
+          ref: enemyTower,
+          x: enemyTower.x,
+          y: enemyTower.y,
+          width: TOWER_WIDTH,
+          height: TOWER_HEIGHT,
         });
       }
       return buildings;
@@ -238,6 +283,63 @@ export function useBattleState() {
     }
 
     return best;
+  }
+
+  function getCreatureAttackRange(creature) {
+    if (creature && typeof creature.attackRange === "number") {
+      return creature.attackRange;
+    }
+    return creature.radius;
+  }
+
+  function getGangUpTarget() {
+    for (const creature of creatures.value) {
+      if (creature.isDead) continue;
+      if (creature.team !== "player") continue;
+      if (creature.type !== "goblin") continue;
+      const candidate = getTargetInRadius(creature, "enemy");
+      if (!candidate || candidate.type !== "enemy") continue;
+      const dist = Math.hypot(
+        candidate.ref.x - creature.x,
+        candidate.ref.y - creature.y
+      );
+      const contactDist =
+        getCreatureAttackRange(creature) +
+        candidate.ref.radius +
+        CREATURE_ATTACK_RANGE_PADDING;
+      if (dist <= contactDist) {
+        return candidate.ref;
+      }
+    }
+    return null;
+  }
+
+  function getPupdragonPackTarget(team) {
+    for (const creature of creatures.value) {
+      if (creature.isDead) continue;
+      if (creature.team !== team) continue;
+      if (creature.type !== "pupdragon") continue;
+      const targetTeam = team === "player" ? "enemy" : "player";
+      const candidate = getTargetInRadius(creature, targetTeam);
+      if (candidate) return candidate;
+    }
+    return null;
+  }
+
+  function getPupdragonPackCenter(team) {
+    let count = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (const creature of creatures.value) {
+      if (creature.isDead) continue;
+      if (creature.team !== team) continue;
+      if (creature.type !== "pupdragon") continue;
+      sumX += creature.x;
+      sumY += creature.y;
+      count += 1;
+    }
+    if (count < 2) return null;
+    return { x: sumX / count, y: sumY / count };
   }
 
   function closestPointOnRect(
@@ -342,6 +444,29 @@ export function useBattleState() {
     );
   }
 
+  function canAssignCreatureToNest(creatureId) {
+    const config = getCreatureConfig(creatureId);
+    return config?.level === "unit";
+  }
+
+  function getNestAtPoint(point) {
+    if (!point) return null;
+    for (const nest of playerNests.value) {
+      if (nest.hp <= 0) continue;
+      const halfW = NEST_WIDTH / 2;
+      const halfH = NEST_HEIGHT / 2;
+      if (
+        point.x >= nest.x - halfW &&
+        point.x <= nest.x + halfW &&
+        point.y >= nest.y - halfH &&
+        point.y <= nest.y + halfH
+      ) {
+        return nest;
+      }
+    }
+    return null;
+  }
+
   function clampToField(point, building) {
     const halfW = building.width / 2;
     const halfH = building.height / 2;
@@ -387,7 +512,6 @@ export function useBattleState() {
   function getPlacementObstacles() {
     const baseEnemy = basePositions.value.enemy;
     const basePlayer = basePositions.value.player;
-    const nestEnemy = nestPositions.value.enemy;
     const obstacles = [
       {
         x: baseEnemy.x,
@@ -402,10 +526,10 @@ export function useBattleState() {
         height: PLAYER_BASE_HEIGHT,
       },
       {
-        x: nestEnemy.x,
-        y: nestEnemy.y,
-        width: NEST_WIDTH,
-        height: NEST_HEIGHT,
+        x: enemyTower.x,
+        y: enemyTower.y,
+        width: TOWER_WIDTH,
+        height: TOWER_HEIGHT,
       },
     ];
 
@@ -502,6 +626,17 @@ export function useBattleState() {
     dragState.isValid = isValid;
   }
 
+  function updateCreatureDragPosition(event) {
+    const point = getBattlefieldCoords(event);
+    if (!point) return;
+    const nest = getNestAtPoint(point);
+    creatureDragState.x = point.x;
+    creatureDragState.y = point.y;
+    creatureDragState.targetNestId = nest ? nest.id : null;
+    creatureDragState.isValid =
+      !!nest && canAssignCreatureToNest(creatureDragState.creatureId);
+  }
+
   function placeBuilding(buildingId, point) {
     const building = getBuildingDefinition(buildingId);
     if (!building || !point) return;
@@ -549,6 +684,15 @@ export function useBattleState() {
     window.removeEventListener("pointerup", handleBuildingDragEnd);
   }
 
+  function cancelCreatureDrag() {
+    creatureDragState.active = false;
+    creatureDragState.creatureId = null;
+    creatureDragState.isValid = false;
+    creatureDragState.targetNestId = null;
+    window.removeEventListener("pointermove", handleCreatureDragMove);
+    window.removeEventListener("pointerup", handleCreatureDragEnd);
+  }
+
   function startBuildingDrag(buildingId, event) {
     if (isGameOver.value) return;
     if (!field.width || !field.height) return;
@@ -558,6 +702,17 @@ export function useBattleState() {
     updateDragPosition(event);
     window.addEventListener("pointermove", handleBuildingDragMove);
     window.addEventListener("pointerup", handleBuildingDragEnd);
+  }
+
+  function startCreatureDrag(creatureId, event) {
+    if (isGameOver.value) return;
+    if (!field.width || !field.height) return;
+    event.preventDefault();
+    creatureDragState.active = true;
+    creatureDragState.creatureId = creatureId;
+    updateCreatureDragPosition(event);
+    window.addEventListener("pointermove", handleCreatureDragMove);
+    window.addEventListener("pointerup", handleCreatureDragEnd);
   }
 
   function handleBuildingDragMove(event) {
@@ -580,6 +735,29 @@ export function useBattleState() {
       }
     }
     cancelBuildingDrag();
+  }
+
+  function handleCreatureDragMove(event) {
+    if (!creatureDragState.active) return;
+    updateCreatureDragPosition(event);
+  }
+
+  function assignCreatureToNest(nestId, creatureId) {
+    const nest = playerNests.value.find((entry) => entry.id === nestId);
+    if (!nest) return;
+    nest.spawnCreatureId = creatureId;
+    nest.spawnProgress = 0;
+  }
+
+  function handleCreatureDragEnd() {
+    if (!creatureDragState.active) return;
+    if (creatureDragState.isValid && creatureDragState.targetNestId) {
+      assignCreatureToNest(
+        creatureDragState.targetNestId,
+        creatureDragState.creatureId
+      );
+    }
+    cancelCreatureDrag();
   }
 
   function applyBaseDamage(targetTeam, damage) {
@@ -610,22 +788,47 @@ export function useBattleState() {
     resultMessage.value = winner === "player" ? "Victory" : "Defeat";
   }
 
+  function getCreatureDamage(attacker, target) {
+    const baseDamage = attacker?.damage ?? 0;
+    if (!attacker || !target) return baseDamage;
+    const typeMod = getEffectiveness(
+      TYPE_EFFECTIVENESS,
+      attacker.attackType,
+      target.attackType
+    );
+    const elementMod = getEffectiveness(
+      ELEMENT_EFFECTIVENESS,
+      attacker.element,
+      target.element
+    );
+    return baseDamage * (1 + typeMod + elementMod);
+  }
+
   function updateSpawns(dt) {
     if (isGameOver.value) return;
-    if (enemyNest.hp > 0) {
-      enemyNest.spawnProgress += dt * 1000;
-      while (enemyNest.spawnProgress >= SPAWN_INTERVAL_MS) {
-        enemyNest.spawnProgress -= SPAWN_INTERVAL_MS;
-        spawnCreature("enemy", nestPositions.value.enemy);
+    if (enemyBase.hp > 0) {
+      baseSpawnProgress.enemy += dt * 1000;
+      while (baseSpawnProgress.enemy >= SPAWN_INTERVAL_MS) {
+        baseSpawnProgress.enemy -= SPAWN_INTERVAL_MS;
+        spawnCreature("enemy", basePositions.value.enemy);
+      }
+    }
+
+    if (playerBase.hp > 0) {
+      baseSpawnProgress.player += dt * 1000;
+      while (baseSpawnProgress.player >= SPAWN_INTERVAL_MS) {
+        baseSpawnProgress.player -= SPAWN_INTERVAL_MS;
+        spawnCreature("player", basePositions.value.player);
       }
     }
 
     for (const nest of playerNests.value) {
       if (nest.hp <= 0) continue;
+      if (!nest.spawnCreatureId) continue;
       nest.spawnProgress += dt * 1000;
       while (nest.spawnProgress >= SPAWN_INTERVAL_MS) {
         nest.spawnProgress -= SPAWN_INTERVAL_MS;
-        spawnCreature("player", nest);
+        spawnCreature("player", nest, nest.spawnCreatureId);
       }
     }
   }
@@ -655,6 +858,7 @@ export function useBattleState() {
     const renderSize = Math.max(TOWER_PROJECTILE_RADIUS * 6, 18);
     projectiles.value.push({
       id: nextProjectileId++,
+      kind: "tower",
       team: tower.team,
       targetId: target.id,
       x: tower.x,
@@ -667,9 +871,40 @@ export function useBattleState() {
     });
   }
 
+  function spawnCreatureProjectile(attacker, target, targetType, targetTeam) {
+    const dx = target.x - attacker.x;
+    const dy = target.y - attacker.y;
+    const angle = Math.atan2(dy, dx);
+    const radius = attacker.projectileRadius ?? 4;
+    const renderSize =
+      attacker.projectileRenderSize ?? Math.max(radius * 6, 18);
+    projectiles.value.push({
+      id: nextProjectileId++,
+      kind: attacker.type,
+      team: attacker.team,
+      targetId: targetType === "creature" ? target.id : null,
+      targetType,
+      targetTeam,
+      targetRef: targetType === "creature" ? null : target,
+      x: attacker.x,
+      y: attacker.y,
+      speed: attacker.projectileSpeed ?? 200,
+      damage: attacker.damage,
+      attackType: attacker.attackType,
+      element: attacker.element,
+      radius,
+      renderSize,
+      angle,
+    });
+  }
+
   function updateTowers(dt) {
     if (isGameOver.value) return;
-    for (const tower of playerTowers.value) {
+    const towers = [...playerTowers.value];
+    if (enemyTower.hp > 0) {
+      towers.push(enemyTower);
+    }
+    for (const tower of towers) {
       if (tower.hp <= 0) continue;
       tower.fireCooldown = Math.max(0, tower.fireCooldown - dt);
       if (tower.fireCooldown > 0) continue;
@@ -685,19 +920,110 @@ export function useBattleState() {
     const nextProjectiles = [];
 
     for (const projectile of projectiles.value) {
-      const target = creatures.value.find(
-        (creature) => creature.id === projectile.targetId
-      );
-      if (!target || target.isDead) continue;
-      const dx = target.x - projectile.x;
-      const dy = target.y - projectile.y;
-      const dist = Math.hypot(dx, dy);
       const step = projectile.speed * dt;
-      const hitDist = projectile.radius + target.radius;
+      const targetType = projectile.targetType || "creature";
+
+      if (targetType === "creature") {
+        const target = creatures.value.find(
+          (creature) => creature.id === projectile.targetId
+        );
+        if (!target || target.isDead) continue;
+        const dx = target.x - projectile.x;
+        const dy = target.y - projectile.y;
+        const dist = Math.hypot(dx, dy);
+        const hitDist = projectile.radius + target.radius;
+        projectile.angle = Math.atan2(dy, dx);
+
+        if (dist <= hitDist + step) {
+          const damage =
+            projectile.attackType || projectile.element
+              ? getCreatureDamage(
+                  {
+                    damage: projectile.damage,
+                    attackType: projectile.attackType,
+                    element: projectile.element,
+                  },
+                  target
+                )
+              : projectile.damage;
+          applyCreatureDamage(target, damage);
+          continue;
+        }
+
+        if (dist > 0.001) {
+          projectile.x += (dx / dist) * step;
+          projectile.y += (dy / dist) * step;
+        }
+
+        nextProjectiles.push(projectile);
+        continue;
+      }
+
+      let targetX;
+      let targetY;
+      let targetW;
+      let targetH;
+      let targetRef = projectile.targetRef;
+
+      if (targetType === "base") {
+        const basePos = basePositions.value[projectile.targetTeam];
+        if (!basePos) continue;
+        targetX = basePos.x;
+        targetY = basePos.y;
+        if (projectile.targetTeam === "enemy") {
+          targetW = ENEMY_BASE_WIDTH;
+          targetH = ENEMY_BASE_HEIGHT;
+        } else {
+          targetW = PLAYER_BASE_WIDTH;
+          targetH = PLAYER_BASE_HEIGHT;
+        }
+      } else {
+        if (!targetRef || targetRef.hp <= 0) continue;
+        targetX = targetRef.x;
+        targetY = targetRef.y;
+        if (targetType === "wall") {
+          targetW = WALL_WIDTH;
+          targetH = WALL_HEIGHT;
+        } else if (targetType === "tower") {
+          targetW = TOWER_WIDTH;
+          targetH = TOWER_HEIGHT;
+        } else if (targetType === "nest") {
+          targetW = NEST_WIDTH;
+          targetH = NEST_HEIGHT;
+        } else {
+          continue;
+        }
+      }
+
+      const dx = targetX - projectile.x;
+      const dy = targetY - projectile.y;
+      const dist = Math.hypot(dx, dy);
       projectile.angle = Math.atan2(dy, dx);
 
-      if (dist <= hitDist + step) {
-        applyCreatureDamage(target, projectile.damage);
+      const contactPoint = closestPointOnRect(
+        projectile.x,
+        projectile.y,
+        targetX,
+        targetY,
+        targetW,
+        targetH
+      );
+      const hitDist = projectile.radius;
+      const distToRect = Math.hypot(
+        contactPoint.x - projectile.x,
+        contactPoint.y - projectile.y
+      );
+
+      if (distToRect <= hitDist + step) {
+        if (targetType === "wall") {
+          applyWallDamage(targetRef, projectile.damage);
+        } else if (targetType === "tower") {
+          applyTowerDamage(targetRef, projectile.damage);
+        } else if (targetType === "nest") {
+          applyNestDamage(targetRef, projectile.damage);
+        } else if (targetType === "base") {
+          applyBaseDamage(projectile.targetTeam, projectile.damage);
+        }
         continue;
       }
 
@@ -740,7 +1066,6 @@ export function useBattleState() {
   function resolveBuildingCollisions() {
     const baseEnemy = basePositions.value.enemy;
     const basePlayer = basePositions.value.player;
-    const nestEnemy = nestPositions.value.enemy;
     const buildings = [
       {
         x: baseEnemy.x,
@@ -761,13 +1086,13 @@ export function useBattleState() {
         kind: "base",
       },
       {
-        x: nestEnemy.x,
-        y: nestEnemy.y,
-        width: NEST_WIDTH,
-        height: NEST_HEIGHT,
-        isActive: enemyNest.hp > 0,
+        x: enemyTower.x,
+        y: enemyTower.y,
+        width: TOWER_WIDTH,
+        height: TOWER_HEIGHT,
+        isActive: enemyTower.hp > 0,
         team: "enemy",
-        kind: "nest",
+        kind: "tower",
       },
     ];
 
@@ -840,6 +1165,15 @@ export function useBattleState() {
   function updateCreatures(dt) {
     if (isGameOver.value) return;
     const removed = new Set();
+    const gangUpTarget = getGangUpTarget();
+    const pupdragonPackTargets = {
+      player: getPupdragonPackTarget("player"),
+      enemy: getPupdragonPackTarget("enemy"),
+    };
+    const pupdragonPackCenters = {
+      player: getPupdragonPackCenter("player"),
+      enemy: getPupdragonPackCenter("enemy"),
+    };
 
     for (const creature of creatures.value) {
       if (removed.has(creature.id)) continue;
@@ -863,7 +1197,19 @@ export function useBattleState() {
       let targetTowerRef = null;
       let targetEnemyRef = null;
 
-      const nearbyTarget = getTargetInRadius(creature, targetTeam);
+      const gangUpForced =
+        gangUpTarget &&
+        creature.team === "player" &&
+        creature.type === "goblin" &&
+        !gangUpTarget.isDead
+          ? { type: "enemy", ref: gangUpTarget, x: gangUpTarget.x, y: gangUpTarget.y }
+          : null;
+      const packTarget = pupdragonPackTargets[creature.team];
+      const packForced =
+        creature.type === "pupdragon" && packTarget && packTarget.ref
+          ? packTarget
+          : null;
+      const nearbyTarget = gangUpForced || packForced || getTargetInRadius(creature, targetTeam);
 
       if (nearbyTarget && nearbyTarget.type === "enemy") {
         targetEnemyRef = nearbyTarget.ref;
@@ -915,7 +1261,9 @@ export function useBattleState() {
         dy = targetY - creature.y;
         dist = Math.hypot(dx, dy);
         const contactDist =
-          creature.radius + targetRadius + CREATURE_ATTACK_RANGE_PADDING;
+          getCreatureAttackRange(creature) +
+          targetRadius +
+          CREATURE_ATTACK_RANGE_PADDING;
         isInRange = dist <= contactDist;
       } else {
         const contactPoint = closestPointOnRect(
@@ -931,25 +1279,65 @@ export function useBattleState() {
         dx = targetX - creature.x;
         dy = targetY - creature.y;
         dist = Math.hypot(dx, dy);
-        isInRange = dist <= creature.radius + BUILDING_ATTACK_RANGE_PADDING;
+        isInRange =
+          dist <= getCreatureAttackRange(creature) + BUILDING_ATTACK_RANGE_PADDING;
       }
 
       if (isInRange) {
+        const isRanged = creature.attackType === "ranged";
         if (
           windupWasActive &&
           creature.attackWindup === 0 &&
           creature.attackCooldown <= 0
         ) {
           if (targetType === "enemy") {
-            applyCreatureDamage(targetEnemyRef, creature.damage);
+            if (isRanged) {
+              spawnCreatureProjectile(
+                creature,
+                targetEnemyRef,
+                "creature",
+                targetTeam
+              );
+            } else {
+              applyCreatureDamage(
+                targetEnemyRef,
+                getCreatureDamage(creature, targetEnemyRef)
+              );
+            }
           } else if (targetType === "wall") {
-            applyWallDamage(targetWallRef, creature.damage);
+            if (isRanged) {
+              spawnCreatureProjectile(creature, targetWallRef, "wall", targetTeam);
+            } else {
+              applyWallDamage(targetWallRef, creature.damage);
+            }
           } else if (targetType === "tower") {
-            applyTowerDamage(targetTowerRef, creature.damage);
+            if (isRanged) {
+              spawnCreatureProjectile(
+                creature,
+                targetTowerRef,
+                "tower",
+                targetTeam
+              );
+            } else {
+              applyTowerDamage(targetTowerRef, creature.damage);
+            }
           } else if (targetType === "nest") {
-            applyNestDamage(targetNestRef, creature.damage);
+            if (isRanged) {
+              spawnCreatureProjectile(creature, targetNestRef, "nest", targetTeam);
+            } else {
+              applyNestDamage(targetNestRef, creature.damage);
+            }
           } else if (targetType === "base") {
-            applyBaseDamage(targetTeam, creature.damage);
+            if (isRanged) {
+              spawnCreatureProjectile(
+                creature,
+                { x: targetX, y: targetY },
+                "base",
+                targetTeam
+              );
+            } else {
+              applyBaseDamage(targetTeam, creature.damage);
+            }
             if (isGameOver.value) break;
           }
           creature.attackCooldown = ATTACK_COOLDOWN;
@@ -960,6 +1348,16 @@ export function useBattleState() {
           creature.attackWindup = ATTACK_WINDUP;
         }
         continue;
+      }
+
+      if (creature.type === "pupdragon" && !isInRange) {
+        const packCenter = pupdragonPackCenters[creature.team];
+        if (packCenter) {
+          const cohesion = 0.25;
+          dx = dx * (1 - cohesion) + (packCenter.x - creature.x) * cohesion;
+          dy = dy * (1 - cohesion) + (packCenter.y - creature.y) * cohesion;
+          dist = Math.hypot(dx, dy);
+        }
       }
 
       if (dist > 0.001) {
@@ -1002,6 +1400,11 @@ export function useBattleState() {
     isBattleActive.value = true;
   }
 
+  function restartBattle() {
+    resetBattle();
+    startBattle();
+  }
+
   function enterDevMode() {
     isDevMode.value = true;
     isBattleActive.value = false;
@@ -1013,12 +1416,21 @@ export function useBattleState() {
 
   function resetBattle() {
     const baseState = createBaseState();
-    const enemyNestState = createEnemyNestState();
+    const enemyTowerState = createTowerState({
+      id: enemyTower.id ?? 0,
+      team: "enemy",
+      x: enemyTower.x ?? nestPositions.value.enemy.x,
+      y: enemyTower.y ?? nestPositions.value.enemy.y,
+    });
     enemyBase.hp = baseState.hp;
     playerBase.hp = baseState.hp;
-    enemyNest.hp = enemyNestState.hp;
-    enemyNest.maxHp = enemyNestState.maxHp;
-    enemyNest.spawnProgress = enemyNestState.spawnProgress;
+    enemyTower.hp = enemyTowerState.hp;
+    enemyTower.maxHp = enemyTowerState.maxHp;
+    enemyTower.fireCooldown = enemyTowerState.fireCooldown;
+    enemyTower.x = enemyTowerState.x;
+    enemyTower.y = enemyTowerState.y;
+    baseSpawnProgress.enemy = SPAWN_INTERVAL_MS;
+    baseSpawnProgress.player = SPAWN_INTERVAL_MS;
     playerNests.value = [];
     playerWalls.value = [];
     playerTowers.value = [];
@@ -1032,6 +1444,7 @@ export function useBattleState() {
     nextBuildingId = 1;
     nextProjectileId = 1;
     cancelBuildingDrag();
+    cancelCreatureDrag();
     scheduleFocusOnPlayerBase();
   }
 
@@ -1049,13 +1462,13 @@ export function useBattleState() {
     };
   }
 
-  function enemyNestStyle() {
+  function enemyTowerStyle() {
     const pos = nestPositions.value.enemy;
     return {
       left: `${pos.x}px`,
       top: `${pos.y}px`,
-      width: `${NEST_WIDTH}px`,
-      height: `${NEST_HEIGHT}px`,
+      width: `${TOWER_WIDTH}px`,
+      height: `${TOWER_HEIGHT}px`,
     };
   }
 
@@ -1121,6 +1534,7 @@ export function useBattleState() {
   }
 
   function spawnPercent(nest) {
+    if (!nest?.spawnCreatureId) return 0;
     const progress = nest?.spawnProgress || 0;
     return Math.min(100, Math.round((progress / SPAWN_INTERVAL_MS) * 100));
   }
@@ -1134,6 +1548,31 @@ export function useBattleState() {
     null
   );
 
+  const dragCreature = computed(
+    () =>
+      creatureCatalog.find(
+        (creature) => creature.id === creatureDragState.creatureId
+      ) || null
+  );
+
+  const creaturePopStats = computed(() =>
+    creatureCatalog.map((creature) => {
+      const config = getCreatureConfig(creature.id);
+      const popMax =
+        config && typeof config.pop === "number" ? config.pop : 0;
+      const popUsed = creatures.value.filter(
+        (unit) =>
+          !unit.isDead && unit.team === "player" && unit.type === creature.id
+      ).length;
+      return {
+        ...creature,
+        icon: config?.icon || creature.icon || "",
+        popUsed,
+        popMax,
+      };
+    })
+  );
+
   const dragGhostStyle = computed(() => {
     const style = {
       left: `${dragState.x}px`,
@@ -1145,6 +1584,18 @@ export function useBattleState() {
     }
     return style;
   });
+
+  const creatureDragGhostStyle = computed(() => ({
+    left: `${creatureDragState.x}px`,
+    top: `${creatureDragState.y}px`,
+    width: "52px",
+    height: "52px",
+  }));
+
+  function creatureLabel(creatureId) {
+    const creature = creatureCatalog.find((entry) => entry.id === creatureId);
+    return creature?.name || "Assigned";
+  }
 
   function focusOnPlayerBase() {
     if (!battlefieldShellRef.value || !viewport.height) return;
@@ -1185,6 +1636,7 @@ export function useBattleState() {
     window.removeEventListener("resize", measureField);
     window.removeEventListener("keydown", handleKeyScroll);
     cancelBuildingDrag();
+    cancelCreatureDrag();
   });
 
   return {
@@ -1193,15 +1645,18 @@ export function useBattleState() {
     baseMaxHp: BASE_MAX_HP,
     enemyBase,
     playerBase,
-    enemyNest,
+    enemyTower,
     playerNests,
     playerWalls,
     playerTowers,
     buildingCatalog,
     dragState,
     dragBuilding,
+    creatureDragState,
+    dragCreature,
     creatures,
     projectiles,
+    creaturePopStats,
     isBattleActive,
     isDevMode,
     enemyHpPercent,
@@ -1209,7 +1664,7 @@ export function useBattleState() {
     isGameOver,
     resultMessage,
     baseStyle,
-    enemyNestStyle,
+    enemyTowerStyle,
     playerNestStyle,
     wallStyle,
     towerStyle,
@@ -1218,10 +1673,14 @@ export function useBattleState() {
     creatureHpPercent,
     nestHpPercent,
     spawnPercent,
+    creatureLabel,
     buildingZoneStyle,
     dragGhostStyle,
+    creatureDragGhostStyle,
     startBuildingDrag,
+    startCreatureDrag,
     startBattle,
+    restartBattle,
     stopBattle,
     enterDevMode,
     resetBattle,

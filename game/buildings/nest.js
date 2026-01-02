@@ -21,6 +21,7 @@ export function createEnemyNestState() {
     hp: NEST_CONFIG.maxHp,
     maxHp: NEST_CONFIG.maxHp,
     spawnProgress: 0,
+    spawnCreatureId: null,
   };
 }
 
@@ -34,6 +35,7 @@ export function createNestState({ id, team, x, y }) {
     hp: NEST_CONFIG.maxHp,
     maxHp: NEST_CONFIG.maxHp,
     spawnProgress: 0,
+    spawnCreatureId: null,
   };
 }
 
