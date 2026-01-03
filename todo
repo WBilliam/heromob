@@ -2,10 +2,9 @@ ui
     - better display icons (creatures/buildings)
 
 creatures
-    - smoother movement when bounce back 
+    - smoother movement when bounce back from building
     - make attack animation
     - better targeting
-    - if a creature pop is full, the nest shouldnt be loading
 
 bugs
 

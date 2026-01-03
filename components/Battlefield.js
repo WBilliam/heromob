@@ -122,10 +122,12 @@ const BuildingZoneLine = defineComponent({
   name: "BuildingZoneLine",
   props: {
     style: { type: Object, required: true },
+    label: { type: String, default: "Building Zone" },
+    tone: { type: String, default: "player" },
   },
   template: `
-    <div class="building-zone-line" :style="style">
-      <span>Building Zone</span>
+    <div class="building-zone-line" :class="tone" :style="style">
+      <span>{{ label }}</span>
     </div>
   `,
 });
@@ -189,7 +191,17 @@ export default defineComponent({
   template: `
     <div class="battlefield-shell" ref="battlefieldShellRef">
       <div class="battlefield" ref="battlefieldRef">
-        <BuildingZoneLine :style="buildingZoneStyle" />
+        <BuildingZoneLine
+          :style="buildingZoneStyle"
+          label="Player Zone"
+          tone="player"
+        />
+        <BuildingZoneLine
+          v-if="isDevMode"
+          :style="enemyBuildingZoneStyle"
+          label="Enemy Zone"
+          tone="enemy"
+        />
         <BaseBlock
           v-if="enemyBase.hp > 0"
           team="enemy"
@@ -201,12 +213,38 @@ export default defineComponent({
           :style="baseStyle('player')"
         />
 
-        <TowerBlock
-          v-if="enemyTower.hp > 0"
-          :tower="enemyTower"
-          :style="enemyTowerStyle()"
-          :hp-percent="nestHpPercent(enemyTower)"
-        />
+        <template v-for="nest in enemyNests" :key="nest.id">
+          <NestBlock
+            v-if="nest.hp > 0"
+            team="enemy"
+            label="Enemy Nest"
+            :nest="nest"
+            :style="playerNestStyle(nest)"
+            :hp-percent="nestHpPercent(nest)"
+            :spawn-percent="spawnPercent(nest)"
+            :is-target="enemyCreatureDragState.active && enemyCreatureDragState.targetNestId === nest.id"
+            :is-valid-target="enemyCreatureDragState.isValid"
+            :assigned-label="nest.spawnCreatureId ? creatureLabel(nest.spawnCreatureId) : ''"
+          />
+        </template>
+
+        <template v-for="wall in enemyWalls" :key="wall.id">
+          <WallBlock
+            v-if="wall.hp > 0"
+            :wall="wall"
+            :style="wallStyle(wall)"
+            :hp-percent="nestHpPercent(wall)"
+          />
+        </template>
+
+        <template v-for="tower in enemyTowers" :key="tower.id">
+          <TowerBlock
+            v-if="tower.hp > 0"
+            :tower="tower"
+            :style="towerStyle(tower)"
+            :hp-percent="nestHpPercent(tower)"
+          />
+        </template>
 
         <template v-for="nest in playerNests" :key="nest.id">
           <NestBlock
@@ -249,11 +287,26 @@ export default defineComponent({
           :label="dragBuilding.name"
         />
 
+        <DragGhost
+          v-if="enemyDragState.active && enemyDragBuilding"
+          :style="enemyDragGhostStyle"
+          :is-valid="enemyDragState.isValid"
+          :type="enemyDragBuilding.id"
+          :label="enemyDragBuilding.name"
+        />
+
         <CreatureGhost
           v-if="creatureDragState.active && dragCreature"
           :style="creatureDragGhostStyle"
           :is-valid="creatureDragState.isValid"
           :creature="dragCreature"
+        />
+
+        <CreatureGhost
+          v-if="enemyCreatureDragState.active && enemyDragCreature"
+          :style="enemyCreatureDragGhostStyle"
+          :is-valid="enemyCreatureDragState.isValid"
+          :creature="enemyDragCreature"
         />
 
         <ProjectileBolt

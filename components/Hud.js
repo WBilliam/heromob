@@ -38,8 +38,9 @@ export default defineComponent({
       />
 
       <div class="center">
-        <div class="title">Stage 2 Battle Prototype</div>
+        <div class="title">Battle Prototype</div>
         <div class="subtitle">Place nests, walls, and towers to push to the base.</div>
+        <div class="stage-indicator">{{ stageLabel }}</div>
         <button class="btn" type="button" @click="restartBattle">Restart</button>
       </div>
 

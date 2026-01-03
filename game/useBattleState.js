@@ -74,9 +74,9 @@ export function useBattleState() {
 
   const enemyBase = reactive(createBaseState());
   const playerBase = reactive(createBaseState());
-  const enemyTower = reactive(
-    createTowerState({ id: 0, team: "enemy", x: 0, y: 0 })
-  );
+  const enemyNests = ref([]);
+  const enemyWalls = ref([]);
+  const enemyTowers = ref([]);
   const playerNests = ref([]);
   const playerWalls = ref([]);
   const playerTowers = ref([]);
@@ -92,7 +92,22 @@ export function useBattleState() {
     y: 0,
     isValid: false,
   });
+  const enemyDragState = reactive({
+    active: false,
+    buildingId: null,
+    x: 0,
+    y: 0,
+    isValid: false,
+  });
   const creatureDragState = reactive({
+    active: false,
+    creatureId: null,
+    x: 0,
+    y: 0,
+    isValid: false,
+    targetNestId: null,
+  });
+  const enemyCreatureDragState = reactive({
     active: false,
     creatureId: null,
     x: 0,
@@ -105,12 +120,18 @@ export function useBattleState() {
   const isDevMode = ref(false);
   const isGameOver = ref(false);
   const resultMessage = ref("");
+  const isBossBattle = ref(false);
+  const stageConfigs = ref([]);
+  const devStageIndex = ref(0);
+  const activeStageIndex = ref(0);
 
   let nextId = 1;
   let nextBuildingId = 1;
+  let nextEnemyBuildingId = 1;
   let nextProjectileId = 1;
   let animationId = 0;
   let lastTime = 0;
+  let seededStageDefaults = false;
 
   const basePositions = computed(() => {
     const centerX = field.width / 2;
@@ -121,29 +142,21 @@ export function useBattleState() {
     };
   });
 
-  const nestPositions = computed(() => {
+  const defaultEnemyTowerPosition = computed(() => {
     const offset = 140;
     return {
-      enemy: {
-        x: basePositions.value.enemy.x,
-        y: basePositions.value.enemy.y + offset,
-      },
-      player: {
-        x: basePositions.value.player.x,
-        y: basePositions.value.player.y - offset,
-      },
+      x: basePositions.value.enemy.x,
+      y: basePositions.value.enemy.y + offset,
     };
   });
-
-  function updateEnemyTowerPosition() {
-    const pos = nestPositions.value.enemy;
-    enemyTower.x = pos.x;
-    enemyTower.y = pos.y;
-  }
 
   const buildingZoneTop = computed(() =>
     Math.max(0, field.height * BUILDING_ZONE_START_RATIO)
   );
+  const enemyZoneBottom = computed(() =>
+    Math.max(0, field.height * (1 - BUILDING_ZONE_START_RATIO))
+  );
+  const stageCount = computed(() => (isBossBattle.value ? 5 : 3));
 
   const enemyHpPercent = computed(() =>
     Math.max(0, Math.round((enemyBase.hp / BASE_MAX_HP) * 100))
@@ -160,7 +173,50 @@ export function useBattleState() {
     field.height = rect.height;
     viewport.width = shellRect.width;
     viewport.height = shellRect.height;
-    updateEnemyTowerPosition();
+    seedStageDefaults();
+  }
+
+  function createStageConfig(index) {
+    return {
+      id: index + 1,
+      enemyBuildings: [],
+    };
+  }
+
+  function ensureStageConfigs() {
+    const desired = stageCount.value;
+    while (stageConfigs.value.length < desired) {
+      stageConfigs.value.push(createStageConfig(stageConfigs.value.length));
+    }
+    if (stageConfigs.value.length > desired) {
+      stageConfigs.value.splice(desired);
+    }
+    if (devStageIndex.value >= desired) {
+      devStageIndex.value = Math.max(0, desired - 1);
+    }
+    if (activeStageIndex.value >= desired) {
+      activeStageIndex.value = Math.max(0, desired - 1);
+    }
+  }
+
+  function seedStageDefaults() {
+    if (seededStageDefaults) return;
+    if (!field.width || !field.height) return;
+    ensureStageConfigs();
+    const stage = stageConfigs.value[0];
+    if (stage && stage.enemyBuildings.length === 0) {
+      const pos = defaultEnemyTowerPosition.value;
+      stage.enemyBuildings.push({
+        id: nextEnemyBuildingId++,
+        type: "tower",
+        x: pos.x,
+        y: pos.y,
+        spawnCreatureId: null,
+      });
+    }
+    seededStageDefaults = true;
+    const stageIndex = isDevMode.value ? devStageIndex.value : activeStageIndex.value;
+    applyStageConfig(stageIndex);
   }
 
   function hasPopSpace(team, creatureId) {
@@ -197,12 +253,37 @@ export function useBattleState() {
   function getEnemyBuildings(targetTeam) {
     const buildings = [];
     if (targetTeam === "enemy") {
-      if (enemyTower.hp > 0) {
+      for (const nest of enemyNests.value) {
+        if (nest.hp <= 0) continue;
+        buildings.push({
+          type: "nest",
+          ref: nest,
+          x: nest.x,
+          y: nest.y,
+          width: NEST_WIDTH,
+          height: NEST_HEIGHT,
+        });
+      }
+
+      for (const wall of enemyWalls.value) {
+        if (wall.hp <= 0) continue;
+        buildings.push({
+          type: "wall",
+          ref: wall,
+          x: wall.x,
+          y: wall.y,
+          width: WALL_WIDTH,
+          height: WALL_HEIGHT,
+        });
+      }
+
+      for (const tower of enemyTowers.value) {
+        if (tower.hp <= 0) continue;
         buildings.push({
           type: "tower",
-          ref: enemyTower,
-          x: enemyTower.x,
-          y: enemyTower.y,
+          ref: tower,
+          x: tower.x,
+          y: tower.y,
           width: TOWER_WIDTH,
           height: TOWER_HEIGHT,
         });
@@ -434,13 +515,13 @@ export function useBattleState() {
     };
   }
 
-  function isPointInBuildingZone(point) {
+  function isPointInZone(point, zoneTop, zoneBottom) {
     if (!point) return false;
     return (
       point.x >= 0 &&
       point.x <= field.width &&
-      point.y >= buildingZoneTop.value &&
-      point.y <= field.height
+      point.y >= zoneTop &&
+      point.y <= zoneBottom
     );
   }
 
@@ -449,9 +530,10 @@ export function useBattleState() {
     return config?.level === "unit";
   }
 
-  function getNestAtPoint(point) {
+  function getNestAtPoint(point, team = "player") {
     if (!point) return null;
-    for (const nest of playerNests.value) {
+    const nests = team === "enemy" ? enemyNests.value : playerNests.value;
+    for (const nest of nests) {
       if (nest.hp <= 0) continue;
       const halfW = NEST_WIDTH / 2;
       const halfH = NEST_HEIGHT / 2;
@@ -476,16 +558,12 @@ export function useBattleState() {
     };
   }
 
-  function clampToZone(point, building) {
+  function clampToZone(point, building, zoneTop, zoneBottom) {
     const halfW = building.width / 2;
     const halfH = building.height / 2;
     return {
       x: clamp(point.x, halfW, field.width - halfW),
-      y: clamp(
-        point.y,
-        buildingZoneTop.value + halfH,
-        field.height - halfH
-      ),
+      y: clamp(point.y, zoneTop + halfH, zoneBottom - halfH),
     };
   }
 
@@ -525,13 +603,37 @@ export function useBattleState() {
         width: PLAYER_BASE_WIDTH,
         height: PLAYER_BASE_HEIGHT,
       },
-      {
-        x: enemyTower.x,
-        y: enemyTower.y,
+    ];
+
+    for (const nest of enemyNests.value) {
+      if (nest.hp <= 0) continue;
+      obstacles.push({
+        x: nest.x,
+        y: nest.y,
+        width: NEST_WIDTH,
+        height: NEST_HEIGHT,
+      });
+    }
+
+    for (const wall of enemyWalls.value) {
+      if (wall.hp <= 0) continue;
+      obstacles.push({
+        x: wall.x,
+        y: wall.y,
+        width: WALL_WIDTH,
+        height: WALL_HEIGHT,
+      });
+    }
+
+    for (const tower of enemyTowers.value) {
+      if (tower.hp <= 0) continue;
+      obstacles.push({
+        x: tower.x,
+        y: tower.y,
         width: TOWER_WIDTH,
         height: TOWER_HEIGHT,
-      },
-    ];
+      });
+    }
 
     for (const nest of playerNests.value) {
       if (nest.hp <= 0) continue;
@@ -588,8 +690,8 @@ export function useBattleState() {
     return true;
   }
 
-  function findValidPlacement(point, building) {
-    const candidate = clampToZone(point, building);
+  function findValidPlacement(point, building, zoneTop, zoneBottom) {
+    const candidate = clampToZone(point, building, zoneTop, zoneBottom);
     if (isPlacementClear(candidate, building)) return candidate;
     const step = 8;
     const maxRadius = Math.max(building.width, building.height) * 3;
@@ -599,7 +701,9 @@ export function useBattleState() {
           if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
           const testPoint = clampToZone(
             { x: point.x + dx, y: point.y + dy },
-            building
+            building,
+            zoneTop,
+            zoneBottom
           );
           if (isPlacementClear(testPoint, building)) return testPoint;
         }
@@ -608,33 +712,51 @@ export function useBattleState() {
     return null;
   }
 
-  function updateDragPosition(event) {
-    const building = getBuildingDefinition(dragState.buildingId);
+  function updateBuildingDragPosition(state, event, zoneTop, zoneBottom) {
+    const building = getBuildingDefinition(state.buildingId);
     if (!building) return;
     const point = getBattlefieldCoords(event);
     if (!point) return;
     const clamped = clampToField(point, building);
     let preview = clamped;
     let isValid = false;
-    if (isPointInBuildingZone(point)) {
-      const zonePoint = clampToZone(point, building);
+    if (isPointInZone(point, zoneTop, zoneBottom)) {
+      const zonePoint = clampToZone(point, building, zoneTop, zoneBottom);
       preview = zonePoint;
       isValid = isPlacementClear(zonePoint, building);
     }
-    dragState.x = preview.x;
-    dragState.y = preview.y;
-    dragState.isValid = isValid;
+    state.x = preview.x;
+    state.y = preview.y;
+    state.isValid = isValid;
   }
 
-  function updateCreatureDragPosition(event) {
+  function updateDragPosition(event) {
+    updateBuildingDragPosition(
+      dragState,
+      event,
+      buildingZoneTop.value,
+      field.height
+    );
+  }
+
+  function updateEnemyDragPosition(event) {
+    updateBuildingDragPosition(
+      enemyDragState,
+      event,
+      0,
+      enemyZoneBottom.value
+    );
+  }
+
+  function updateCreatureDragPosition(event, team) {
     const point = getBattlefieldCoords(event);
     if (!point) return;
-    const nest = getNestAtPoint(point);
-    creatureDragState.x = point.x;
-    creatureDragState.y = point.y;
-    creatureDragState.targetNestId = nest ? nest.id : null;
-    creatureDragState.isValid =
-      !!nest && canAssignCreatureToNest(creatureDragState.creatureId);
+    const nest = getNestAtPoint(point, team);
+    const state = team === "enemy" ? enemyCreatureDragState : creatureDragState;
+    state.x = point.x;
+    state.y = point.y;
+    state.targetNestId = nest ? nest.id : null;
+    state.isValid = !!nest && canAssignCreatureToNest(state.creatureId);
   }
 
   function placeBuilding(buildingId, point) {
@@ -684,6 +806,14 @@ export function useBattleState() {
     window.removeEventListener("pointerup", handleBuildingDragEnd);
   }
 
+  function cancelEnemyBuildingDrag() {
+    enemyDragState.active = false;
+    enemyDragState.buildingId = null;
+    enemyDragState.isValid = false;
+    window.removeEventListener("pointermove", handleEnemyBuildingDragMove);
+    window.removeEventListener("pointerup", handleEnemyBuildingDragEnd);
+  }
+
   function cancelCreatureDrag() {
     creatureDragState.active = false;
     creatureDragState.creatureId = null;
@@ -691,6 +821,15 @@ export function useBattleState() {
     creatureDragState.targetNestId = null;
     window.removeEventListener("pointermove", handleCreatureDragMove);
     window.removeEventListener("pointerup", handleCreatureDragEnd);
+  }
+
+  function cancelEnemyCreatureDrag() {
+    enemyCreatureDragState.active = false;
+    enemyCreatureDragState.creatureId = null;
+    enemyCreatureDragState.isValid = false;
+    enemyCreatureDragState.targetNestId = null;
+    window.removeEventListener("pointermove", handleEnemyCreatureDragMove);
+    window.removeEventListener("pointerup", handleEnemyCreatureDragEnd);
   }
 
   function startBuildingDrag(buildingId, event) {
@@ -704,15 +843,35 @@ export function useBattleState() {
     window.addEventListener("pointerup", handleBuildingDragEnd);
   }
 
+  function startEnemyBuildingDrag(buildingId, event) {
+    if (!field.width || !field.height) return;
+    event.preventDefault();
+    enemyDragState.active = true;
+    enemyDragState.buildingId = buildingId;
+    updateEnemyDragPosition(event);
+    window.addEventListener("pointermove", handleEnemyBuildingDragMove);
+    window.addEventListener("pointerup", handleEnemyBuildingDragEnd);
+  }
+
   function startCreatureDrag(creatureId, event) {
     if (isGameOver.value) return;
     if (!field.width || !field.height) return;
     event.preventDefault();
     creatureDragState.active = true;
     creatureDragState.creatureId = creatureId;
-    updateCreatureDragPosition(event);
+    updateCreatureDragPosition(event, "player");
     window.addEventListener("pointermove", handleCreatureDragMove);
     window.addEventListener("pointerup", handleCreatureDragEnd);
+  }
+
+  function startEnemyCreatureDrag(creatureId, event) {
+    if (!field.width || !field.height) return;
+    event.preventDefault();
+    enemyCreatureDragState.active = true;
+    enemyCreatureDragState.creatureId = creatureId;
+    updateCreatureDragPosition(event, "enemy");
+    window.addEventListener("pointermove", handleEnemyCreatureDragMove);
+    window.addEventListener("pointerup", handleEnemyCreatureDragEnd);
   }
 
   function handleBuildingDragMove(event) {
@@ -728,8 +887,17 @@ export function useBattleState() {
     }
     const building = getBuildingDefinition(dragState.buildingId);
     const point = getBattlefieldCoords(event);
-    if (building && point && isPointInBuildingZone(point)) {
-      const placement = findValidPlacement(point, building);
+    if (
+      building &&
+      point &&
+      isPointInZone(point, buildingZoneTop.value, field.height)
+    ) {
+      const placement = findValidPlacement(
+        point,
+        building,
+        buildingZoneTop.value,
+        field.height
+      );
       if (placement) {
         placeBuilding(dragState.buildingId, placement);
       }
@@ -737,9 +905,36 @@ export function useBattleState() {
     cancelBuildingDrag();
   }
 
+  function handleEnemyBuildingDragMove(event) {
+    if (!enemyDragState.active) return;
+    updateEnemyDragPosition(event);
+  }
+
+  function handleEnemyBuildingDragEnd(event) {
+    if (!enemyDragState.active) return;
+    if (!field.width || !field.height) {
+      cancelEnemyBuildingDrag();
+      return;
+    }
+    const building = getBuildingDefinition(enemyDragState.buildingId);
+    const point = getBattlefieldCoords(event);
+    if (building && point && isPointInZone(point, 0, enemyZoneBottom.value)) {
+      const placement = findValidPlacement(
+        point,
+        building,
+        0,
+        enemyZoneBottom.value
+      );
+      if (placement) {
+        addEnemyBuildingToStage(enemyDragState.buildingId, placement);
+      }
+    }
+    cancelEnemyBuildingDrag();
+  }
+
   function handleCreatureDragMove(event) {
     if (!creatureDragState.active) return;
-    updateCreatureDragPosition(event);
+    updateCreatureDragPosition(event, "player");
   }
 
   function assignCreatureToNest(nestId, creatureId) {
@@ -747,6 +942,235 @@ export function useBattleState() {
     if (!nest) return;
     nest.spawnCreatureId = creatureId;
     nest.spawnProgress = 0;
+  }
+
+  function assignEnemyCreatureToNest(nestId, creatureId) {
+    ensureStageConfigs();
+    const stage = stageConfigs.value[devStageIndex.value];
+    if (!stage) return;
+    const entry = stage.enemyBuildings.find(
+      (building) => building.id === nestId && building.type === "nest"
+    );
+    if (!entry) return;
+    entry.spawnCreatureId = creatureId;
+    applyStageConfig(devStageIndex.value);
+  }
+
+  function addEnemyBuildingToStage(buildingId, point) {
+    ensureStageConfigs();
+    const stage = stageConfigs.value[devStageIndex.value];
+    if (!stage || !point) return;
+    stage.enemyBuildings.push({
+      id: nextEnemyBuildingId++,
+      type: buildingId,
+      x: point.x,
+      y: point.y,
+      spawnCreatureId: null,
+    });
+    applyStageConfig(devStageIndex.value);
+  }
+
+  function applyStageConfig(stageIndex) {
+    ensureStageConfigs();
+    const stage = stageConfigs.value[stageIndex];
+    if (!stage) return;
+    const nests = [];
+    const walls = [];
+    const towers = [];
+
+    for (const entry of stage.enemyBuildings) {
+      if (entry.type === "nest") {
+        const nest = createNestState({
+          id: entry.id,
+          team: "enemy",
+          x: entry.x,
+          y: entry.y,
+        });
+        nest.spawnCreatureId = entry.spawnCreatureId || null;
+        nests.push(nest);
+      } else if (entry.type === "wall") {
+        walls.push(
+          createWallState({
+            id: entry.id,
+            team: "enemy",
+            x: entry.x,
+            y: entry.y,
+          })
+        );
+      } else if (entry.type === "tower") {
+        towers.push(
+          createTowerState({
+            id: entry.id,
+            team: "enemy",
+            x: entry.x,
+            y: entry.y,
+          })
+        );
+      }
+    }
+
+    enemyNests.value = nests;
+    enemyWalls.value = walls;
+    enemyTowers.value = towers;
+  }
+
+  function clearDevStage() {
+    ensureStageConfigs();
+    const stage = stageConfigs.value[devStageIndex.value];
+    if (!stage) return;
+    stage.enemyBuildings = [];
+    applyStageConfig(devStageIndex.value);
+  }
+
+  function setDevStage(index) {
+    ensureStageConfigs();
+    if (index < 0 || index >= stageConfigs.value.length) return;
+    devStageIndex.value = index;
+    if (isDevMode.value) {
+      applyStageConfig(devStageIndex.value);
+    }
+  }
+
+  function toggleBossBattle() {
+    isBossBattle.value = !isBossBattle.value;
+    ensureStageConfigs();
+    if (isDevMode.value) {
+      applyStageConfig(devStageIndex.value);
+      return;
+    }
+    applyStageConfig(activeStageIndex.value);
+  }
+
+  function resetEnemyForStage() {
+    const baseState = createBaseState();
+    enemyBase.hp = baseState.hp;
+    baseSpawnProgress.enemy = SPAWN_INTERVAL_MS;
+    creatures.value = creatures.value.filter(
+      (creature) => creature.team !== "enemy"
+    );
+    projectiles.value = projectiles.value.filter(
+      (projectile) => projectile.team !== "enemy"
+    );
+    applyStageConfig(activeStageIndex.value);
+  }
+
+  function advanceStage() {
+    ensureStageConfigs();
+    const lastStage = stageConfigs.value.length - 1;
+    if (activeStageIndex.value >= lastStage) {
+      endGame("player");
+      return;
+    }
+    activeStageIndex.value += 1;
+    resetEnemyForStage();
+  }
+
+  function exportStageConfigData() {
+    return {
+      version: 1,
+      createdAt: new Date().toISOString(),
+      isBossBattle: isBossBattle.value,
+      stages: stageConfigs.value.map((stage, index) => ({
+        id: index + 1,
+        enemyBuildings: stage.enemyBuildings.map((building) => ({
+          type: building.type,
+          x: Math.round(building.x),
+          y: Math.round(building.y),
+          spawnCreatureId: building.spawnCreatureId || null,
+        })),
+      })),
+    };
+  }
+
+  function exportStageConfigJson() {
+    return JSON.stringify(exportStageConfigData(), null, 2);
+  }
+
+  function importStageConfigData(data) {
+    if (!data || typeof data !== "object") {
+      return { ok: false, error: "Invalid stage data." };
+    }
+    const rawStages = Array.isArray(data.stages)
+      ? data.stages
+      : Array.isArray(data.stageConfigs)
+      ? data.stageConfigs
+      : null;
+    if (!rawStages) {
+      return { ok: false, error: "Stage data is missing a stages array." };
+    }
+
+    const bossFlag =
+      typeof data.isBossBattle === "boolean" ? data.isBossBattle : rawStages.length >= 5;
+    isBossBattle.value = bossFlag;
+    const desiredCount = bossFlag ? 5 : 3;
+    const validTypes = new Set(buildingCatalog.map((building) => building.id));
+    const normalizedStages = [];
+    let nextId = 1;
+
+    for (let i = 0; i < desiredCount; i += 1) {
+      const stage = rawStages[i] || {};
+      const rawBuildings = Array.isArray(stage.enemyBuildings)
+        ? stage.enemyBuildings
+        : Array.isArray(stage.buildings)
+        ? stage.buildings
+        : [];
+      const enemyBuildings = [];
+
+      for (const entry of rawBuildings) {
+        if (!entry || !validTypes.has(entry.type)) continue;
+        const x = Number(entry.x);
+        const y = Number(entry.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        enemyBuildings.push({
+          id: nextId++,
+          type: entry.type,
+          x,
+          y,
+          spawnCreatureId: entry.spawnCreatureId || null,
+        });
+      }
+
+      normalizedStages.push({ id: i + 1, enemyBuildings });
+    }
+
+    stageConfigs.value = normalizedStages;
+    nextEnemyBuildingId = nextId;
+    seededStageDefaults = true;
+    devStageIndex.value = 0;
+    activeStageIndex.value = 0;
+    if (isDevMode.value) {
+      applyStageConfig(devStageIndex.value);
+    } else {
+      resetEnemyForStage();
+    }
+    return { ok: true };
+  }
+
+  function importStageConfigJson(json) {
+    if (typeof json !== "string") {
+      return { ok: false, error: "Stage import expects JSON text." };
+    }
+    let data;
+    try {
+      data = JSON.parse(json);
+    } catch (error) {
+      return { ok: false, error: "Invalid JSON file." };
+    }
+    return importStageConfigData(data);
+  }
+
+  async function loadStageConfigFromUrl(url) {
+    if (!url) return { ok: false, error: "Missing stage config url." };
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        return { ok: false, error: "Stage config not found." };
+      }
+      const data = await response.json();
+      return importStageConfigData(data);
+    } catch (error) {
+      return { ok: false, error: "Failed to load stage config." };
+    }
   }
 
   function handleCreatureDragEnd() {
@@ -760,6 +1184,22 @@ export function useBattleState() {
     cancelCreatureDrag();
   }
 
+  function handleEnemyCreatureDragMove(event) {
+    if (!enemyCreatureDragState.active) return;
+    updateCreatureDragPosition(event, "enemy");
+  }
+
+  function handleEnemyCreatureDragEnd() {
+    if (!enemyCreatureDragState.active) return;
+    if (enemyCreatureDragState.isValid && enemyCreatureDragState.targetNestId) {
+      assignEnemyCreatureToNest(
+        enemyCreatureDragState.targetNestId,
+        enemyCreatureDragState.creatureId
+      );
+    }
+    cancelEnemyCreatureDrag();
+  }
+
   function applyBaseDamage(targetTeam, damage) {
     const base = targetTeam === "enemy" ? enemyBase : playerBase;
     applyBaseDamageToState(base, damage);
@@ -770,7 +1210,8 @@ export function useBattleState() {
     }
 
     if (enemyBase.hp <= 0 && playerBase.hp > 0) {
-      endGame("player");
+      if (isDevMode.value) return;
+      advanceStage();
     }
   }
 
@@ -811,6 +1252,16 @@ export function useBattleState() {
       while (baseSpawnProgress.enemy >= SPAWN_INTERVAL_MS) {
         baseSpawnProgress.enemy -= SPAWN_INTERVAL_MS;
         spawnCreature("enemy", basePositions.value.enemy);
+      }
+    }
+
+    for (const nest of enemyNests.value) {
+      if (nest.hp <= 0) continue;
+      if (!nest.spawnCreatureId) continue;
+      nest.spawnProgress += dt * 1000;
+      while (nest.spawnProgress >= SPAWN_INTERVAL_MS) {
+        nest.spawnProgress -= SPAWN_INTERVAL_MS;
+        spawnCreature("enemy", nest, nest.spawnCreatureId);
       }
     }
 
@@ -900,10 +1351,7 @@ export function useBattleState() {
 
   function updateTowers(dt) {
     if (isGameOver.value) return;
-    const towers = [...playerTowers.value];
-    if (enemyTower.hp > 0) {
-      towers.push(enemyTower);
-    }
+    const towers = [...playerTowers.value, ...enemyTowers.value];
     for (const tower of towers) {
       if (tower.hp <= 0) continue;
       tower.fireCooldown = Math.max(0, tower.fireCooldown - dt);
@@ -1085,16 +1533,43 @@ export function useBattleState() {
         team: "player",
         kind: "base",
       },
-      {
-        x: enemyTower.x,
-        y: enemyTower.y,
+    ];
+
+    for (const nest of enemyNests.value) {
+      buildings.push({
+        x: nest.x,
+        y: nest.y,
+        width: NEST_WIDTH,
+        height: NEST_HEIGHT,
+        isActive: nest.hp > 0,
+        team: "enemy",
+        kind: "nest",
+      });
+    }
+
+    for (const wall of enemyWalls.value) {
+      buildings.push({
+        x: wall.x,
+        y: wall.y,
+        width: WALL_WIDTH,
+        height: WALL_HEIGHT,
+        isActive: wall.hp > 0,
+        team: "enemy",
+        kind: "wall",
+      });
+    }
+
+    for (const tower of enemyTowers.value) {
+      buildings.push({
+        x: tower.x,
+        y: tower.y,
         width: TOWER_WIDTH,
         height: TOWER_HEIGHT,
-        isActive: enemyTower.hp > 0,
+        isActive: tower.hp > 0,
         team: "enemy",
         kind: "tower",
-      },
-    ];
+      });
+    }
 
     for (const nest of playerNests.value) {
       buildings.push({
@@ -1408,6 +1883,8 @@ export function useBattleState() {
   function enterDevMode() {
     isDevMode.value = true;
     isBattleActive.value = false;
+    ensureStageConfigs();
+    applyStageConfig(devStageIndex.value);
   }
 
   function stopBattle() {
@@ -1416,24 +1893,16 @@ export function useBattleState() {
 
   function resetBattle() {
     const baseState = createBaseState();
-    const enemyTowerState = createTowerState({
-      id: enemyTower.id ?? 0,
-      team: "enemy",
-      x: enemyTower.x ?? nestPositions.value.enemy.x,
-      y: enemyTower.y ?? nestPositions.value.enemy.y,
-    });
     enemyBase.hp = baseState.hp;
     playerBase.hp = baseState.hp;
-    enemyTower.hp = enemyTowerState.hp;
-    enemyTower.maxHp = enemyTowerState.maxHp;
-    enemyTower.fireCooldown = enemyTowerState.fireCooldown;
-    enemyTower.x = enemyTowerState.x;
-    enemyTower.y = enemyTowerState.y;
     baseSpawnProgress.enemy = SPAWN_INTERVAL_MS;
     baseSpawnProgress.player = SPAWN_INTERVAL_MS;
     playerNests.value = [];
     playerWalls.value = [];
     playerTowers.value = [];
+    enemyNests.value = [];
+    enemyWalls.value = [];
+    enemyTowers.value = [];
     creatures.value = [];
     projectiles.value = [];
     isGameOver.value = false;
@@ -1443,8 +1912,13 @@ export function useBattleState() {
     nextId = 1;
     nextBuildingId = 1;
     nextProjectileId = 1;
+    activeStageIndex.value = 0;
+    ensureStageConfigs();
+    applyStageConfig(activeStageIndex.value);
     cancelBuildingDrag();
     cancelCreatureDrag();
+    cancelEnemyBuildingDrag();
+    cancelEnemyCreatureDrag();
     scheduleFocusOnPlayerBase();
   }
 
@@ -1459,16 +1933,6 @@ export function useBattleState() {
       top: `${pos.y}px`,
       width: `${size.width}px`,
       height: `${size.height}px`,
-    };
-  }
-
-  function enemyTowerStyle() {
-    const pos = nestPositions.value.enemy;
-    return {
-      left: `${pos.x}px`,
-      top: `${pos.y}px`,
-      width: `${TOWER_WIDTH}px`,
-      height: `${TOWER_HEIGHT}px`,
     };
   }
 
@@ -1542,16 +2006,30 @@ export function useBattleState() {
   const buildingZoneStyle = computed(() => ({
     top: `${buildingZoneTop.value}px`,
   }));
+  const enemyBuildingZoneStyle = computed(() => ({
+    top: `${enemyZoneBottom.value}px`,
+  }));
 
   const dragBuilding = computed(() =>
     buildingCatalog.find((building) => building.id === dragState.buildingId) ||
     null
+  );
+  const enemyDragBuilding = computed(() =>
+    buildingCatalog.find(
+      (building) => building.id === enemyDragState.buildingId
+    ) || null
   );
 
   const dragCreature = computed(
     () =>
       creatureCatalog.find(
         (creature) => creature.id === creatureDragState.creatureId
+      ) || null
+  );
+  const enemyDragCreature = computed(
+    () =>
+      creatureCatalog.find(
+        (creature) => creature.id === enemyCreatureDragState.creatureId
       ) || null
   );
 
@@ -1572,6 +2050,24 @@ export function useBattleState() {
       };
     })
   );
+  const devCreatureOptions = computed(() =>
+    creatureCatalog.map((creature) => {
+      const config = getCreatureConfig(creature.id);
+      return {
+        ...creature,
+        icon: config?.icon || creature.icon || "",
+        popUsed: 0,
+        popMax: config && typeof config.pop === "number" ? config.pop : 0,
+      };
+    })
+  );
+
+  const stageLabel = computed(
+    () => `Stage ${activeStageIndex.value + 1} / ${stageCount.value}`
+  );
+  const devStageLabel = computed(
+    () => `Stage ${devStageIndex.value + 1} / ${stageCount.value}`
+  );
 
   const dragGhostStyle = computed(() => {
     const style = {
@@ -1584,10 +2080,27 @@ export function useBattleState() {
     }
     return style;
   });
+  const enemyDragGhostStyle = computed(() => {
+    const style = {
+      left: `${enemyDragState.x}px`,
+      top: `${enemyDragState.y}px`,
+    };
+    if (enemyDragBuilding.value) {
+      style.width = `${enemyDragBuilding.value.width}px`;
+      style.height = `${enemyDragBuilding.value.height}px`;
+    }
+    return style;
+  });
 
   const creatureDragGhostStyle = computed(() => ({
     left: `${creatureDragState.x}px`,
     top: `${creatureDragState.y}px`,
+    width: "52px",
+    height: "52px",
+  }));
+  const enemyCreatureDragGhostStyle = computed(() => ({
+    left: `${enemyCreatureDragState.x}px`,
+    top: `${enemyCreatureDragState.y}px`,
     width: "52px",
     height: "52px",
   }));
@@ -1626,6 +2139,7 @@ export function useBattleState() {
     measureField();
     window.addEventListener("resize", measureField);
     window.addEventListener("keydown", handleKeyScroll);
+    loadStageConfigFromUrl("/stages/stage-config.json");
     resetBattle();
     scheduleFocusOnPlayerBase();
     animationId = requestAnimationFrame(animationLoop);
@@ -1637,6 +2151,8 @@ export function useBattleState() {
     window.removeEventListener("keydown", handleKeyScroll);
     cancelBuildingDrag();
     cancelCreatureDrag();
+    cancelEnemyBuildingDrag();
+    cancelEnemyCreatureDrag();
   });
 
   return {
@@ -1645,7 +2161,9 @@ export function useBattleState() {
     baseMaxHp: BASE_MAX_HP,
     enemyBase,
     playerBase,
-    enemyTower,
+    enemyNests,
+    enemyWalls,
+    enemyTowers,
     playerNests,
     playerWalls,
     playerTowers,
@@ -1654,17 +2172,26 @@ export function useBattleState() {
     dragBuilding,
     creatureDragState,
     dragCreature,
+    enemyDragState,
+    enemyDragBuilding,
+    enemyCreatureDragState,
+    enemyDragCreature,
     creatures,
     projectiles,
     creaturePopStats,
+    devCreatureOptions,
     isBattleActive,
     isDevMode,
+    isBossBattle,
+    stageCount,
+    stageLabel,
+    devStageLabel,
+    devStageIndex,
     enemyHpPercent,
     playerHpPercent,
     isGameOver,
     resultMessage,
     baseStyle,
-    enemyTowerStyle,
     playerNestStyle,
     wallStyle,
     towerStyle,
@@ -1675,14 +2202,25 @@ export function useBattleState() {
     spawnPercent,
     creatureLabel,
     buildingZoneStyle,
+    enemyBuildingZoneStyle,
     dragGhostStyle,
     creatureDragGhostStyle,
+    enemyDragGhostStyle,
+    enemyCreatureDragGhostStyle,
     startBuildingDrag,
     startCreatureDrag,
+    startEnemyBuildingDrag,
+    startEnemyCreatureDrag,
     startBattle,
     restartBattle,
     stopBattle,
     enterDevMode,
     resetBattle,
+    setDevStage,
+    clearDevStage,
+    toggleBossBattle,
+    exportStageConfigJson,
+    importStageConfigJson,
+    loadStageConfigFromUrl,
   };
 }

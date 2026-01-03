@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "createdAt": "2026-01-03T22:19:40.032Z",
+  "isBossBattle": false,
+  "stages": [
+    {
+      "id": 1,
+      "enemyBuildings": [
+        {
+          "type": "wall",
+          "x": 331,
+          "y": 375,
+          "spawnCreatureId": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "enemyBuildings": [
+        {
+          "type": "nest",
+          "x": 326,
+          "y": 263,
+          "spawnCreatureId": "pupdragon"
+        },
+        {
+          "type": "wall",
+          "x": 336,
+          "y": 401,
+          "spawnCreatureId": null
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "enemyBuildings": [
+        {
+          "type": "nest",
+          "x": 328,
+          "y": 253,
+          "spawnCreatureId": "pupdragon"
+        },
+        {
+          "type": "tower",
+          "x": 102,
+          "y": 236,
+          "spawnCreatureId": null
+        },
+        {
+          "type": "tower",
+          "x": 539,
+          "y": 239,
+          "spawnCreatureId": null
+        },
+        {
+          "type": "wall",
+          "x": 330,
+          "y": 429,
+          "spawnCreatureId": null
+        }
+      ]
+    }
+  ]
+}

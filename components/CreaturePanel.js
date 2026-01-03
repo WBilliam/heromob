@@ -1,4 +1,4 @@
-import { defineComponent, inject } from "../lib/vue.js";
+import { defineComponent, inject, computed, unref } from "../lib/vue.js";
 
 const CreatureCard = defineComponent({
   name: "CreatureCard",
@@ -28,20 +28,36 @@ const CreatureCard = defineComponent({
 export default defineComponent({
   name: "CreaturePanel",
   components: { CreatureCard },
-  setup() {
+  props: {
+    title: { type: String, default: "Creatures" },
+    subtitle: { type: String, default: "Drag onto a nest to spawn." },
+    creatures: { type: Array, default: null },
+    dragHandler: { type: Function, default: null },
+  },
+  setup(props) {
     const battle = inject("battle");
-    return { ...battle };
+    const creatureList = computed(() => {
+      if (props.creatures !== null && props.creatures !== undefined) {
+        return unref(props.creatures);
+      }
+      return unref(battle.creaturePopStats);
+    });
+    const handleDragStart = (creatureId, event) => {
+      const handler = props.dragHandler || battle.startCreatureDrag;
+      handler(creatureId, event);
+    };
+    return { creatureList, handleDragStart };
   },
   template: `
     <aside class="creature-panel">
-      <div class="panel-title">Creatures</div>
-      <div class="panel-subtitle">Drag onto a nest to spawn.</div>
+      <div class="panel-title">{{ title }}</div>
+      <div class="panel-subtitle">{{ subtitle }}</div>
       <div class="creature-list">
         <CreatureCard
-          v-for="creature in creaturePopStats"
+          v-for="creature in creatureList"
           :key="creature.id"
           :creature="creature"
-          @dragstart="startCreatureDrag"
+          @dragstart="handleDragStart"
         />
       </div>
     </aside>

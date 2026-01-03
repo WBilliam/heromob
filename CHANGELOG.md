@@ -24,3 +24,12 @@ Stage 2 - Building Placement Prototype
 - Destroyed buildings disappear from the battlefield and no longer block placement.
 - Added creature panel with population counters and drag-to-assign nest spawning.
 - Nests now spawn only after a unit creature is assigned from the creature panel.
+
+Stage 3 - Developer Mode
+- Hidden unlock for dev mode with a guarded dev route.
+- Dev screen with stage selector, boss battle toggle, and clear stage action.
+- Enemy placement tools with a top-third enemy zone and drag-to-place buildings.
+- Drag-to-assign enemy creature spawns to enemy nests.
+- Enemy layouts feed into gameplay, with automatic stage advancement on enemy base defeat.
+- HUD shows current stage progress during battles.
+- Added JSON export/import for enemy stage layouts, plus auto-load from `/stages/stage-config.json`.
