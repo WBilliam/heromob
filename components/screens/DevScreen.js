@@ -106,6 +106,12 @@ export default defineComponent({
       URL.revokeObjectURL(url);
     };
 
+    const updateDevStageAdvancePercent = (event) => {
+      if (!battle) return;
+      const nextValue = Number(event.target.value);
+      battle.setDevStageAdvancePercent(Number.isFinite(nextValue) ? nextValue : 0);
+    };
+
     const saveStagesToDisk = async () => {
       if (!battle) return;
       const json = battle.exportStageConfigJson();
@@ -142,6 +148,7 @@ export default defineComponent({
         importStages,
         exportStages,
         saveStagesToDisk,
+        updateDevStageAdvancePercent,
         handleImportFile,
       };
     },
@@ -166,6 +173,21 @@ export default defineComponent({
             >
               Stage {{ index }}
             </button>
+          </div>
+          <div v-if="devStageIndex < stageCount - 1" class="dev-advance-control">
+            <label class="dev-advance-label" for="dev-advance-percent">
+              Advance at enemy HP%
+            </label>
+            <input
+              id="dev-advance-percent"
+              class="dev-advance-input"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              :value="devStageAdvancePercent"
+              @input="updateDevStageAdvancePercent"
+            />
           </div>
           <button
             class="btn btn-ghost"

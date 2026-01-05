@@ -30,6 +30,9 @@ Stage 3 - Developer Mode
 - Dev screen with stage selector, boss battle toggle, and clear stage action.
 - Enemy placement tools with a top-third enemy zone and drag-to-place buildings.
 - Drag-to-assign enemy creature spawns to enemy nests.
-- Enemy layouts feed into gameplay, with automatic stage advancement on enemy base defeat.
+- Enemy layouts feed into gameplay, with stage advancement driven by per-stage enemy HP% thresholds.
+- Final stage threshold is forced to 0; thresholds can be edited in dev mode.
+- Stage advances keep the enemy base HP instead of resetting it.
 - HUD shows current stage progress during battles.
 - Added JSON export/import for enemy stage layouts, plus auto-load from `/stages/stage-config.json`.
+- Added in-UI save for stage config JSON to `public/stages/stage-config.json`.

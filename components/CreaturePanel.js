@@ -19,6 +19,9 @@ const CreatureCard = defineComponent({
       ></div>
       <div class="creature-info">
         <div class="creature-name">{{ creature.name }}</div>
+        <div class="creature-role" :class="creature.level">
+          {{ creature.level === "minion" ? "Minion (Base)" : "Unit (Nest)" }}
+        </div>
         <div class="creature-pop">{{ creature.popUsed }} / {{ creature.popMax }}</div>
       </div>
     </div>
@@ -30,7 +33,7 @@ export default defineComponent({
   components: { CreatureCard },
   props: {
     title: { type: String, default: "Creatures" },
-    subtitle: { type: String, default: "Drag onto a nest to spawn." },
+    subtitle: { type: String, default: "Drag onto a building to spawn." },
     creatures: { type: Array, default: null },
     dragHandler: { type: Function, default: null },
   },

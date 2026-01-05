@@ -5,6 +5,7 @@ const BaseBlock = defineComponent({
   props: {
     team: { type: String, required: true },
     style: { type: Object, required: true },
+    spawnIcon: { type: String, default: "" },
   },
   setup(props) {
     const label = computed(() =>
@@ -15,6 +16,12 @@ const BaseBlock = defineComponent({
   template: `
     <div class="base" :class="team" :style="style">
       <span class="base-label">{{ label }}</span>
+      <div v-if="spawnIcon" class="spawn-bubble">
+        <div
+          class="spawn-bubble-icon"
+          :style="{ backgroundImage: 'url(' + spawnIcon + ')' }"
+        ></div>
+      </div>
     </div>
   `,
 });
@@ -31,6 +38,7 @@ const NestBlock = defineComponent({
     isTarget: { type: Boolean, default: false },
     isValidTarget: { type: Boolean, default: false },
     assignedLabel: { type: String, default: "" },
+    spawnIcon: { type: String, default: "" },
   },
   template: `
     <div
@@ -45,6 +53,12 @@ const NestBlock = defineComponent({
       ]"
       :style="style"
     >
+      <div v-if="spawnIcon" class="spawn-bubble">
+        <div
+          class="spawn-bubble-icon"
+          :style="{ backgroundImage: 'url(' + spawnIcon + ')' }"
+        ></div>
+      </div>
       <div class="nest-label">{{ label }}</div>
       <div v-if="assignedLabel" class="nest-assigned">{{ assignedLabel }}</div>
       <div class="nest-hp">
@@ -206,11 +220,13 @@ export default defineComponent({
           v-if="enemyBase.hp > 0"
           team="enemy"
           :style="baseStyle('enemy')"
+          :spawn-icon="creatureIcon(baseSpawnCreatureId)"
         />
         <BaseBlock
           v-if="playerBase.hp > 0"
           team="player"
           :style="baseStyle('player')"
+          :spawn-icon="creatureIcon(baseSpawnCreatureId)"
         />
 
         <template v-for="nest in enemyNests" :key="nest.id">
@@ -225,6 +241,7 @@ export default defineComponent({
             :is-target="enemyCreatureDragState.active && enemyCreatureDragState.targetNestId === nest.id"
             :is-valid-target="enemyCreatureDragState.isValid"
             :assigned-label="nest.spawnCreatureId ? creatureLabel(nest.spawnCreatureId) : ''"
+            :spawn-icon="creatureIcon(nest.spawnCreatureId)"
           />
         </template>
 
@@ -258,6 +275,7 @@ export default defineComponent({
             :is-target="creatureDragState.active && creatureDragState.targetNestId === nest.id"
             :is-valid-target="creatureDragState.isValid"
             :assigned-label="nest.spawnCreatureId ? creatureLabel(nest.spawnCreatureId) : ''"
+            :spawn-icon="creatureIcon(nest.spawnCreatureId)"
           />
         </template>
 

@@ -65,6 +65,7 @@ const TOWER_PROJECTILE_RADIUS = TOWER_CONFIG.projectileRadius;
 const WALL_WIDTH = WALL_CONFIG.width;
 const WALL_HEIGHT = WALL_CONFIG.height;
 const SPAWN_INTERVAL_MS = NEST_CONFIG.spawnIntervalMs;
+const BASE_SPAWN_CREATURE_ID = "goblin";
 
 export function useBattleState() {
   const battlefieldShellRef = ref(null);
@@ -180,7 +181,16 @@ export function useBattleState() {
     return {
       id: index + 1,
       enemyBuildings: [],
+      advanceAtEnemyHpPercent: 0,
     };
+  }
+
+  function enforceFinalStageAdvancePercent() {
+    if (!stageConfigs.value.length) return;
+    const lastStage = stageConfigs.value[stageConfigs.value.length - 1];
+    if (lastStage) {
+      lastStage.advanceAtEnemyHpPercent = 0;
+    }
   }
 
   function ensureStageConfigs() {
@@ -197,6 +207,7 @@ export function useBattleState() {
     if (activeStageIndex.value >= desired) {
       activeStageIndex.value = Math.max(0, desired - 1);
     }
+    enforceFinalStageAdvancePercent();
   }
 
   function seedStageDefaults() {
@@ -504,6 +515,11 @@ export function useBattleState() {
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function normalizeAdvancePercent(value) {
+    if (typeof value !== "number" || Number.isNaN(value)) return 0;
+    return clamp(Math.round(value), 0, 100);
   }
 
   function getBattlefieldCoords(event) {
@@ -1042,8 +1058,16 @@ export function useBattleState() {
   }
 
   function resetEnemyForStage() {
+    resetEnemyForStageIndex(activeStageIndex.value, { keepEnemyHp: false });
+  }
+
+  function resetEnemyForStageIndex(stageIndex, options = {}) {
     const baseState = createBaseState();
-    enemyBase.hp = baseState.hp;
+    if (options.keepEnemyHp) {
+      enemyBase.hp = clamp(enemyBase.hp, 0, baseState.hp);
+    } else {
+      enemyBase.hp = baseState.hp;
+    }
     baseSpawnProgress.enemy = SPAWN_INTERVAL_MS;
     creatures.value = creatures.value.filter(
       (creature) => creature.team !== "enemy"
@@ -1051,7 +1075,7 @@ export function useBattleState() {
     projectiles.value = projectiles.value.filter(
       (projectile) => projectile.team !== "enemy"
     );
-    applyStageConfig(activeStageIndex.value);
+    applyStageConfig(stageIndex);
   }
 
   function advanceStage() {
@@ -1062,7 +1086,15 @@ export function useBattleState() {
       return;
     }
     activeStageIndex.value += 1;
-    resetEnemyForStage();
+    resetEnemyForStageIndex(activeStageIndex.value, { keepEnemyHp: true });
+  }
+
+  function advanceDevStage() {
+    ensureStageConfigs();
+    const lastStage = stageConfigs.value.length - 1;
+    if (devStageIndex.value >= lastStage) return;
+    devStageIndex.value += 1;
+    resetEnemyForStageIndex(devStageIndex.value, { keepEnemyHp: true });
   }
 
   function exportStageConfigData() {
@@ -1072,6 +1104,10 @@ export function useBattleState() {
       isBossBattle: isBossBattle.value,
       stages: stageConfigs.value.map((stage, index) => ({
         id: index + 1,
+        advanceAtEnemyHpPercent:
+          index === stageConfigs.value.length - 1
+            ? 0
+            : normalizeAdvancePercent(stage.advanceAtEnemyHpPercent),
         enemyBuildings: stage.enemyBuildings.map((building) => ({
           type: building.type,
           x: Math.round(building.x),
@@ -1107,14 +1143,18 @@ export function useBattleState() {
     const normalizedStages = [];
     let nextId = 1;
 
-    for (let i = 0; i < desiredCount; i += 1) {
-      const stage = rawStages[i] || {};
-      const rawBuildings = Array.isArray(stage.enemyBuildings)
-        ? stage.enemyBuildings
-        : Array.isArray(stage.buildings)
-        ? stage.buildings
-        : [];
-      const enemyBuildings = [];
+      for (let i = 0; i < desiredCount; i += 1) {
+        const stage = rawStages[i] || {};
+        const rawBuildings = Array.isArray(stage.enemyBuildings)
+          ? stage.enemyBuildings
+          : Array.isArray(stage.buildings)
+          ? stage.buildings
+          : [];
+        const advanceAtEnemyHpPercent =
+          i === desiredCount - 1
+            ? 0
+            : normalizeAdvancePercent(stage.advanceAtEnemyHpPercent);
+        const enemyBuildings = [];
 
       for (const entry of rawBuildings) {
         if (!entry || !validTypes.has(entry.type)) continue;
@@ -1130,12 +1170,17 @@ export function useBattleState() {
         });
       }
 
-      normalizedStages.push({ id: i + 1, enemyBuildings });
-    }
+        normalizedStages.push({
+          id: i + 1,
+          enemyBuildings,
+          advanceAtEnemyHpPercent,
+        });
+      }
 
-    stageConfigs.value = normalizedStages;
-    nextEnemyBuildingId = nextId;
-    seededStageDefaults = true;
+      stageConfigs.value = normalizedStages;
+      enforceFinalStageAdvancePercent();
+      nextEnemyBuildingId = nextId;
+      seededStageDefaults = true;
     devStageIndex.value = 0;
     activeStageIndex.value = 0;
     if (isDevMode.value) {
@@ -1209,8 +1254,26 @@ export function useBattleState() {
       return;
     }
 
-    if (enemyBase.hp <= 0 && playerBase.hp > 0) {
-      if (isDevMode.value) return;
+    if (targetTeam !== "enemy") return;
+
+    const stageIndex = isDevMode.value ? devStageIndex.value : activeStageIndex.value;
+    const stage = stageConfigs.value[stageIndex];
+    const threshold = normalizeAdvancePercent(
+      stage?.advanceAtEnemyHpPercent ?? 0
+    );
+
+    if (threshold > 0) {
+      if (enemyHpPercent.value <= threshold) {
+        if (isDevMode.value) {
+          advanceDevStage();
+        } else {
+          advanceStage();
+        }
+      }
+      return;
+    }
+
+    if (!isDevMode.value && enemyBase.hp <= 0) {
       advanceStage();
     }
   }
@@ -1255,15 +1318,22 @@ export function useBattleState() {
       }
     }
 
-    for (const nest of enemyNests.value) {
-      if (nest.hp <= 0) continue;
-      if (!nest.spawnCreatureId) continue;
-      nest.spawnProgress += dt * 1000;
-      while (nest.spawnProgress >= SPAWN_INTERVAL_MS) {
-        nest.spawnProgress -= SPAWN_INTERVAL_MS;
-        spawnCreature("enemy", nest, nest.spawnCreatureId);
+      for (const nest of enemyNests.value) {
+        if (nest.hp <= 0) continue;
+        const spawnId = nest.spawnCreatureId;
+        if (!spawnId) continue;
+        if (hasPopSpace("enemy", spawnId)) {
+          nest.spawnProgress += dt * 1000;
+        }
+        while (nest.spawnProgress >= SPAWN_INTERVAL_MS) {
+          if (!hasPopSpace("enemy", spawnId)) {
+            nest.spawnProgress = SPAWN_INTERVAL_MS;
+            break;
+          }
+          nest.spawnProgress -= SPAWN_INTERVAL_MS;
+          spawnCreature("enemy", nest, spawnId);
+        }
       }
-    }
 
     if (playerBase.hp > 0) {
       baseSpawnProgress.player += dt * 1000;
@@ -1273,15 +1343,22 @@ export function useBattleState() {
       }
     }
 
-    for (const nest of playerNests.value) {
-      if (nest.hp <= 0) continue;
-      if (!nest.spawnCreatureId) continue;
-      nest.spawnProgress += dt * 1000;
-      while (nest.spawnProgress >= SPAWN_INTERVAL_MS) {
-        nest.spawnProgress -= SPAWN_INTERVAL_MS;
-        spawnCreature("player", nest, nest.spawnCreatureId);
+      for (const nest of playerNests.value) {
+        if (nest.hp <= 0) continue;
+        const spawnId = nest.spawnCreatureId;
+        if (!spawnId) continue;
+        if (hasPopSpace("player", spawnId)) {
+          nest.spawnProgress += dt * 1000;
+        }
+        while (nest.spawnProgress >= SPAWN_INTERVAL_MS) {
+          if (!hasPopSpace("player", spawnId)) {
+            nest.spawnProgress = SPAWN_INTERVAL_MS;
+            break;
+          }
+          nest.spawnProgress -= SPAWN_INTERVAL_MS;
+          spawnCreature("player", nest, spawnId);
+        }
       }
-    }
   }
 
   function findClosestEnemyCreature(tower) {
@@ -2068,6 +2145,21 @@ export function useBattleState() {
   const devStageLabel = computed(
     () => `Stage ${devStageIndex.value + 1} / ${stageCount.value}`
   );
+  const devStageAdvancePercent = computed(() => {
+    const stage = stageConfigs.value[devStageIndex.value];
+    return normalizeAdvancePercent(stage?.advanceAtEnemyHpPercent ?? 0);
+  });
+
+  function setDevStageAdvancePercent(value) {
+    ensureStageConfigs();
+    const stage = stageConfigs.value[devStageIndex.value];
+    if (!stage) return;
+    if (devStageIndex.value >= stageConfigs.value.length - 1) {
+      stage.advanceAtEnemyHpPercent = 0;
+      return;
+    }
+    stage.advanceAtEnemyHpPercent = normalizeAdvancePercent(value);
+  }
 
   const dragGhostStyle = computed(() => {
     const style = {
@@ -2108,6 +2200,14 @@ export function useBattleState() {
   function creatureLabel(creatureId) {
     const creature = creatureCatalog.find((entry) => entry.id === creatureId);
     return creature?.name || "Assigned";
+  }
+
+  function creatureIcon(creatureId) {
+    if (!creatureId) return "";
+    const config = getCreatureConfig(creatureId);
+    if (config?.icon) return config.icon;
+    const creature = creatureCatalog.find((entry) => entry.id === creatureId);
+    return creature?.icon || "";
   }
 
   function focusOnPlayerBase() {
@@ -2187,6 +2287,7 @@ export function useBattleState() {
     stageLabel,
     devStageLabel,
     devStageIndex,
+    devStageAdvancePercent,
     enemyHpPercent,
     playerHpPercent,
     isGameOver,
@@ -2201,6 +2302,8 @@ export function useBattleState() {
     nestHpPercent,
     spawnPercent,
     creatureLabel,
+    creatureIcon,
+    baseSpawnCreatureId: BASE_SPAWN_CREATURE_ID,
     buildingZoneStyle,
     enemyBuildingZoneStyle,
     dragGhostStyle,
@@ -2219,6 +2322,7 @@ export function useBattleState() {
     setDevStage,
     clearDevStage,
     toggleBossBattle,
+    setDevStageAdvancePercent,
     exportStageConfigJson,
     importStageConfigJson,
     loadStageConfigFromUrl,
