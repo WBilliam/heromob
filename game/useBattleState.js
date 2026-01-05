@@ -86,6 +86,7 @@ export function useBattleState() {
   const creatureCatalog = CREATURE_CATALOG;
   const baseSpawnProgress = reactive({ enemy: 0, player: 0 });
   const buildingCatalog = BUILDING_CATALOG;
+  const buildingPlacement = reactive({});
   const dragState = reactive({
     active: false,
     buildingId: null,
@@ -541,6 +542,73 @@ export function useBattleState() {
     );
   }
 
+  function getBuildingLoadDuration(buildingId) {
+    const building = getBuildingDefinition(buildingId);
+    if (!building) return 0;
+    const duration = Number(building.placingLoadMs);
+    return Number.isFinite(duration) ? Math.max(0, duration) : 0;
+  }
+
+  function initBuildingPlacementTimers() {
+    for (const building of buildingCatalog) {
+      buildingPlacement[building.id] = getBuildingLoadDuration(building.id);
+    }
+  }
+
+  function resetBuildingPlacementTimer(buildingId) {
+    if (!buildingId) return;
+    buildingPlacement[buildingId] = getBuildingLoadDuration(buildingId);
+  }
+
+  function updateBuildingPlacementTimers(dt) {
+    if (isDevMode.value) return;
+    const elapsedMs = dt * 1000;
+    for (const building of buildingCatalog) {
+      const duration = getBuildingLoadDuration(building.id);
+      if (!duration) {
+        buildingPlacement[building.id] = 0;
+        continue;
+      }
+      const remaining = buildingPlacement[building.id];
+      if (!Number.isFinite(remaining)) {
+        buildingPlacement[building.id] = duration;
+        continue;
+      }
+      if (remaining <= 0) continue;
+      buildingPlacement[building.id] = Math.max(0, remaining - elapsedMs);
+    }
+  }
+
+  function getBuildingPlacement(buildingId) {
+    const durationMs = getBuildingLoadDuration(buildingId);
+    if (isDevMode.value) {
+      return {
+        durationMs,
+        remainingMs: 0,
+        progress: 1,
+        isReady: true,
+      };
+    }
+    const remainingMs = Number.isFinite(buildingPlacement[buildingId])
+      ? Math.max(0, buildingPlacement[buildingId])
+      : durationMs;
+    const progress =
+      durationMs > 0 ? (durationMs - remainingMs) / durationMs : 1;
+    return {
+      durationMs,
+      remainingMs,
+      progress: Math.min(1, Math.max(0, progress)),
+      isReady: remainingMs <= 0,
+    };
+  }
+
+  function canPlaceBuilding(buildingId) {
+    if (!buildingId) return false;
+    if (isDevMode.value) return true;
+    const placement = getBuildingPlacement(buildingId);
+    return placement?.isReady ?? false;
+  }
+
   function canAssignCreatureToNest(creatureId) {
     const config = getCreatureConfig(creatureId);
     return config?.level === "unit";
@@ -777,7 +845,7 @@ export function useBattleState() {
 
   function placeBuilding(buildingId, point) {
     const building = getBuildingDefinition(buildingId);
-    if (!building || !point) return;
+    if (!building || !point) return false;
     if (buildingId === "nest") {
       playerNests.value.push(
         createNestState({
@@ -787,7 +855,7 @@ export function useBattleState() {
           y: point.y,
         })
       );
-      return;
+      return true;
     }
 
     if (buildingId === "wall") {
@@ -799,7 +867,7 @@ export function useBattleState() {
           y: point.y,
         })
       );
-      return;
+      return true;
     }
 
     if (buildingId === "tower") {
@@ -811,7 +879,9 @@ export function useBattleState() {
           y: point.y,
         })
       );
+      return true;
     }
+    return false;
   }
 
   function cancelBuildingDrag() {
@@ -851,6 +921,7 @@ export function useBattleState() {
   function startBuildingDrag(buildingId, event) {
     if (isGameOver.value) return;
     if (!field.width || !field.height) return;
+    if (!canPlaceBuilding(buildingId)) return;
     event.preventDefault();
     dragState.active = true;
     dragState.buildingId = buildingId;
@@ -915,7 +986,9 @@ export function useBattleState() {
         field.height
       );
       if (placement) {
-        placeBuilding(dragState.buildingId, placement);
+        if (placeBuilding(dragState.buildingId, placement)) {
+          resetBuildingPlacementTimer(dragState.buildingId);
+        }
       }
     }
     cancelBuildingDrag();
@@ -1938,6 +2011,9 @@ export function useBattleState() {
     if (!lastTime) lastTime = now;
     const dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
+    if (!isGameOver.value) {
+      updateBuildingPlacementTimers(dt);
+    }
     if (isBattleActive.value && !isGameOver.value) {
       updateSpawns(dt);
       updateCreatures(dt);
@@ -1989,6 +2065,7 @@ export function useBattleState() {
     nextId = 1;
     nextBuildingId = 1;
     nextProjectileId = 1;
+    initBuildingPlacementTimers();
     activeStageIndex.value = 0;
     ensureStageConfigs();
     applyStageConfig(activeStageIndex.value);
@@ -2268,6 +2345,8 @@ export function useBattleState() {
     playerWalls,
     playerTowers,
     buildingCatalog,
+    getBuildingPlacement,
+    canPlaceBuilding,
     dragState,
     dragBuilding,
     creatureDragState,

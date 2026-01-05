@@ -22,6 +22,13 @@ export default defineComponent({
       }
     };
 
+    const hideDev = () => {
+      devUnlocked.value = false;
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(DEV_UNLOCK_KEY);
+      }
+    };
+
     const handleKeydown = (event) => {
       if (!event.key || event.key.length !== 1) return;
       keyBuffer = `${keyBuffer}${event.key.toLowerCase()}`.slice(-7);
@@ -38,7 +45,7 @@ export default defineComponent({
       window.removeEventListener("keydown", handleKeydown);
     });
 
-    return { goToGame, goToDev, devUnlocked, unlockDev };
+    return { goToGame, goToDev, devUnlocked, unlockDev, hideDev };
   },
   template: `
     <section class="menu-screen">
@@ -55,6 +62,14 @@ export default defineComponent({
             @click="goToDev"
           >
             Dev Mode
+          </button>
+          <button
+            v-if="devUnlocked"
+            class="btn btn-ghost"
+            type="button"
+            @click="hideDev"
+          >
+            Hide Dev Mode
           </button>
         </div>
         <div v-if="devUnlocked" class="menu-note">

@@ -885,6 +885,44 @@ body {
   cursor: not-allowed;
 }
 
+.building-card.loading {
+  cursor: not-allowed;
+}
+
+.building-load {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(12, 9, 8, 0.75);
+  overflow: hidden;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #f6d38b;
+  text-shadow: 0 1px 2px rgba(6, 4, 3, 0.8);
+}
+
+.building-load-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(246, 211, 139, 0.2), #f6d38b);
+  transition: width 0.2s linear;
+}
+
+.building-load-text {
+  position: relative;
+  z-index: 1;
+}
+
 .building-icon {
   display: block;
   position: absolute;
@@ -1053,15 +1091,16 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
   background-image: repeating-linear-gradient(
     90deg,
-    rgba(239, 229, 216, 0.25),
-    rgba(239, 229, 216, 0.25) 10px,
+    rgba(87, 182, 176, 0.6),
+    rgba(87, 182, 176, 0.6) 12px,
     transparent 10px,
-    transparent 18px
+    transparent 20px
   );
-  opacity: 0.55;
+  opacity: 0.9;
+  box-shadow: 0 0 12px rgba(87, 182, 176, 0.35);
   z-index: 1;
   pointer-events: none;
 }
@@ -1069,30 +1108,33 @@ body {
 .building-zone-line span {
   position: absolute;
   right: 18px;
-  top: -18px;
-  font-size: 0.55rem;
+  top: -20px;
+  font-size: 0.6rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: rgba(87, 182, 176, 0.95);
   background: rgba(24, 18, 15, 0.9);
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 107, 78, 0.3);
+  border: 1px solid rgba(87, 182, 176, 0.55);
+  box-shadow: 0 0 10px rgba(87, 182, 176, 0.25);
 }
 
 .building-zone-line.enemy {
   background-image: repeating-linear-gradient(
     90deg,
-    rgba(213, 106, 94, 0.4),
-    rgba(213, 106, 94, 0.4) 10px,
+    rgba(213, 106, 94, 0.55),
+    rgba(213, 106, 94, 0.55) 12px,
     transparent 10px,
-    transparent 18px
+    transparent 20px
   );
+  box-shadow: 0 0 10px rgba(213, 106, 94, 0.3);
 }
 
 .building-zone-line.enemy span {
   color: rgba(213, 106, 94, 0.95);
-  border-color: rgba(213, 106, 94, 0.4);
+  border-color: rgba(213, 106, 94, 0.6);
+  box-shadow: 0 0 10px rgba(213, 106, 94, 0.25);
 }
 
 .result {

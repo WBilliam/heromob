@@ -3,7 +3,6 @@
     - in dev mode add a browse json button to browse locally
     - rotate projectile graphics to point to enemy
 
-
 ## creatures
     - smoother movement when bounce back from building
     - make attack animation

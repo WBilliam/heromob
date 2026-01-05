@@ -2,9 +2,10 @@ export const NEST_CONFIG = {
   id: "nest",
   name: "Nest",
   description: "Spawns allied creatures.",
-  maxHp: 50,
+  maxHp: 30,
   width: 96,
   height: 64,
+  placingLoadMs: 20000,
   spawnIntervalMs: 3000,
 };
 
@@ -14,6 +15,7 @@ export const NEST_DEFINITION = {
   description: NEST_CONFIG.description,
   width: NEST_CONFIG.width,
   height: NEST_CONFIG.height,
+  placingLoadMs: NEST_CONFIG.placingLoadMs,
 };
 
 export function createEnemyNestState() {
