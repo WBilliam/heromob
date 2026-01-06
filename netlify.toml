@@ -1,3 +1,3 @@
 [build]
-  command = "bash .netlify-build.sh"
+  command = "bash ./netlify-build.sh"
   publish = "dist"
